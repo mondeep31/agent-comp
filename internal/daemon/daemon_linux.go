@@ -10,6 +10,7 @@ import (
 	"github.com/mondeep31/agent-comp/internal/auth"
 	"github.com/mondeep31/agent-comp/internal/config"
 	"github.com/mondeep31/agent-comp/internal/golden"
+	"github.com/mondeep31/agent-comp/internal/metrics"
 	"github.com/mondeep31/agent-comp/internal/network"
 	"github.com/mondeep31/agent-comp/internal/pool"
 	"github.com/mondeep31/agent-comp/internal/sandbox"
@@ -32,7 +33,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (_ *Daemon, e
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	d := &Daemon{cfg: cfg, log: log, keys: keys, cancel: cancel}
+	d := &Daemon{cfg: cfg, log: log, keys: keys, cancel: cancel, metrics: metrics.New()}
 	defer func() {
 		if err != nil {
 			_ = d.Close(context.WithoutCancel(ctx))
@@ -117,11 +118,13 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (_ *Daemon, e
 		Limits:       cfg.Limits,
 		SnapshotDir:  filepath.Join(cfg.DataDir, "snapshots"),
 		Logger:       log,
+		Events:       d.metrics.SandboxEvent,
 	})
 	if err != nil {
 		_ = vms.Close(ctx)
 		return nil, err
 	}
+	d.metrics.Watch(d.manager.Stats, vms.Stats)
 	go d.manager.Run(ctx, reapInterval)
 	d.closers = []func(context.Context) error{
 		func(ctx context.Context) error { d.manager.Close(ctx); return nil },

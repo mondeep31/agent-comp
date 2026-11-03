@@ -3,6 +3,8 @@
 
 # Keep the API on loopback: public ingress goes through the Cloudflare tunnel.
 listen: 127.0.0.1:8080
+# Prometheus metrics; empty disables. Never expose this through the tunnel.
+metrics_listen: 127.0.0.1:9464
 data_dir: /var/lib/agent-comp
 
 firecracker:

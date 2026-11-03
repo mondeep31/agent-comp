@@ -14,6 +14,7 @@ import (
 	"github.com/mondeep31/agent-comp/internal/auth"
 	"github.com/mondeep31/agent-comp/internal/config"
 	"github.com/mondeep31/agent-comp/internal/mcpserver"
+	"github.com/mondeep31/agent-comp/internal/metrics"
 	"github.com/mondeep31/agent-comp/internal/sandbox"
 	"github.com/mondeep31/agent-comp/internal/version"
 )
@@ -27,6 +28,7 @@ type Daemon struct {
 	keys    *auth.Keys
 	manager *sandbox.Manager
 	handler http.Handler
+	metrics *metrics.Metrics
 	// closers run in order on Close.
 	closers []func(context.Context) error
 	cancel  context.CancelFunc
@@ -36,6 +38,9 @@ type Daemon struct {
 func (d *Daemon) Handler() http.Handler { return d.handler }
 
 func (d *Daemon) Manager() *sandbox.Manager { return d.manager }
+
+// MetricsHandler serves Prometheus metrics.
+func (d *Daemon) MetricsHandler() http.Handler { return d.metrics.Handler() }
 
 // ReloadKeys re-reads the API keys file.
 func (d *Daemon) ReloadKeys() error {
@@ -94,5 +99,6 @@ func newAPI(d *Daemon) {
 		Burst:             d.cfg.Limits.RequestBurst,
 		Logger:            d.log,
 		Extra:             map[string]http.Handler{"/v1/mcp": mcpserver.HTTPHandler(mcpServer)},
+		Metrics:           d.metrics,
 	}).Handler()
 }

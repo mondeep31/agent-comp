@@ -16,15 +16,17 @@ import (
 
 type Config struct {
 	// Listen is the API address. Keep it on loopback; ingress goes through the tunnel.
-	Listen      string          `yaml:"listen"`
-	DataDir     string          `yaml:"data_dir"`
-	Firecracker Firecracker     `yaml:"firecracker"`
-	Images      []Image         `yaml:"images"`
-	Sandbox     SandboxDefaults `yaml:"sandbox"`
-	Limits      Limits          `yaml:"limits"`
-	Pool        Pool            `yaml:"pool"`
-	Network     Network         `yaml:"network"`
-	Auth        Auth            `yaml:"auth"`
+	Listen string `yaml:"listen"`
+	// MetricsListen serves Prometheus metrics; empty disables. Keep it on loopback.
+	MetricsListen string          `yaml:"metrics_listen"`
+	DataDir       string          `yaml:"data_dir"`
+	Firecracker   Firecracker     `yaml:"firecracker"`
+	Images        []Image         `yaml:"images"`
+	Sandbox       SandboxDefaults `yaml:"sandbox"`
+	Limits        Limits          `yaml:"limits"`
+	Pool          Pool            `yaml:"pool"`
+	Network       Network         `yaml:"network"`
+	Auth          Auth            `yaml:"auth"`
 }
 
 // Firecracker configures the VMM. Every VM always runs under jailer: snapshot
@@ -116,8 +118,9 @@ func DefaultDenyCIDRs() []string {
 // Default returns a configuration suitable for a single dev host.
 func Default() Config {
 	return Config{
-		Listen:  "127.0.0.1:8080",
-		DataDir: "/var/lib/agent-comp",
+		Listen:        "127.0.0.1:8080",
+		MetricsListen: "127.0.0.1:9464",
+		DataDir:       "/var/lib/agent-comp",
 		Firecracker: Firecracker{
 			Binary:       "/usr/local/bin/firecracker",
 			JailerBinary: "/usr/local/bin/jailer",
@@ -198,6 +201,14 @@ func (c *Config) Validate() error {
 
 	_, err := netip.ParseAddrPort(c.Listen)
 	check(err == nil, "listen %q: must be ip:port", c.Listen)
+	if c.MetricsListen != "" {
+		_, err := netip.ParseAddrPort(c.MetricsListen)
+		check(err == nil, "metrics_listen %q: must be ip:port", c.MetricsListen)
+	}
+	if c.MetricsListen != "" {
+		_, err := netip.ParseAddrPort(c.MetricsListen)
+		check(err == nil, "metrics_listen %q: must be ip:port", c.MetricsListen)
+	}
 	check(c.DataDir != "", "data_dir is required")
 	check(c.Firecracker.Binary != "", "firecracker.binary is required")
 	check(c.Firecracker.JailerBinary != "", "firecracker.jailer_binary is required")

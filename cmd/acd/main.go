@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -75,6 +76,16 @@ func run() error {
 	}()
 
 	var lc net.ListenConfig
+	if cfg.MetricsListen != "" {
+		mln, err := lc.Listen(ctx, "tcp", cfg.MetricsListen)
+		if err != nil {
+			return err
+		}
+		srv := &http.Server{Handler: d.MetricsHandler(), ReadHeaderTimeout: 5 * time.Second}
+		go func() { _ = srv.Serve(mln) }()
+		defer srv.Close()
+		logger.Info("metrics listening", "addr", mln.Addr().String())
+	}
 	ln, err := lc.Listen(ctx, "tcp", cfg.Listen)
 	if err != nil {
 		return err

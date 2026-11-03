@@ -56,6 +56,7 @@ type Event struct {
 	To      State
 	Reason  string
 	Warm    bool
+	Fork    bool
 	Elapsed time.Duration
 }
 
@@ -304,7 +305,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Info, error) {
 	go m.watch(context.WithoutCancel(ctx), sb)
 	m.log.Info("sandbox created", "id", sb.info.ID, "owner", req.Owner, "key", p.key.String(),
 		"warm", inst.Warm, "fork", p.fork, "startup_ms", sb.info.StartupMs)
-	m.emit(Event{Sandbox: sb.info.ID, Owner: req.Owner, From: StateCreating, To: StateRunning, Warm: inst.Warm, Elapsed: now.Sub(start)})
+	m.emit(Event{Sandbox: sb.info.ID, Owner: req.Owner, From: StateCreating, To: StateRunning, Warm: inst.Warm, Fork: p.fork != "", Elapsed: now.Sub(start)})
 	return sb.info, nil
 }
 

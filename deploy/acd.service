@@ -1,0 +1,36 @@
+[Unit]
+Description=agent-comp daemon (Firecracker sandboxes)
+Documentation=https://github.com/mondeep31/agent-comp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/acd -config /etc/agent-comp/acd.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=2s
+# acd stops its VMs on SIGTERM; anything left after the timeout is killed.
+KillMode=mixed
+TimeoutStopSec=45s
+LimitNOFILE=1048576
+
+# acd must stay root: jailer needs chroot, mknod, setuid/setgid and cgroup
+# writes, and networking needs netns and nftables. Everything else is
+# denied.
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_ADMIN CAP_NET_RAW CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_MKNOD CAP_SYS_CHROOT CAP_KILL CAP_SYS_RESOURCE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/agent-comp /srv/jailer /sys/fs/cgroup /run /var/run
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

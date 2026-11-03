@@ -16,6 +16,7 @@ import (
 	"github.com/mondeep31/agent-comp/internal/client"
 	"github.com/mondeep31/agent-comp/internal/config"
 	"github.com/mondeep31/agent-comp/internal/guest/guesttest"
+	"github.com/mondeep31/agent-comp/internal/metrics"
 	"github.com/mondeep31/agent-comp/internal/sandbox"
 )
 
@@ -27,9 +28,10 @@ func (k keys) Authenticate(token string) (string, bool) {
 }
 
 type env struct {
-	srv   *httptest.Server
-	alice *client.Client
-	bob   *client.Client
+	srv     *httptest.Server
+	alice   *client.Client
+	bob     *client.Client
+	metrics *metrics.Metrics
 }
 
 func setup(t *testing.T, tweak func(*config.Limits, *api.Options)) *env {
@@ -41,6 +43,7 @@ func setup(t *testing.T, tweak func(*config.Limits, *api.Options)) *env {
 		Auth:              keys{"ac_alice": "alice", "ac_bob": "bob"},
 		RequestsPerSecond: 1000,
 		Burst:             1000,
+		Metrics:           metrics.New(),
 	}
 	if tweak != nil {
 		tweak(&limits, &opts)
@@ -63,9 +66,10 @@ func setup(t *testing.T, tweak func(*config.Limits, *api.Options)) *env {
 		m.Close(context.Background())
 	})
 	return &env{
-		srv:   srv,
-		alice: client.New(srv.URL, "ac_alice", srv.Client()),
-		bob:   client.New(srv.URL, "ac_bob", srv.Client()),
+		srv:     srv,
+		alice:   client.New(srv.URL, "ac_alice", srv.Client()),
+		bob:     client.New(srv.URL, "ac_bob", srv.Client()),
+		metrics: opts.Metrics,
 	}
 }
 
@@ -77,8 +81,8 @@ func TestAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("healthz = %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK || len(resp.Header.Get("X-Request-Id")) != 16 {
+		t.Fatalf("healthz = %d, request id %q", resp.StatusCode, resp.Header.Get("X-Request-Id"))
 	}
 
 	for _, token := range []string{"", "ac_wrong"} {
@@ -133,6 +137,17 @@ func TestLifecycle(t *testing.T) {
 	}
 	if _, err := e.alice.Get(ctx, info.ID); !errors.Is(err, sandbox.ErrNotFound) {
 		t.Fatalf("Get after delete: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	e.metrics.Handler().ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/metrics", nil))
+	for _, want := range []string{
+		`agentcomp_api_requests_total{code="201",method="POST",route="POST /v1/sandboxes"} 1`,
+		`agentcomp_api_requests_total{code="404",method="GET",route="GET /v1/sandboxes/{id}"}`,
+	} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("metrics missing %s", want)
+		}
 	}
 }
 

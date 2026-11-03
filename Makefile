@@ -65,16 +65,19 @@ proto: ## Regenerate Go code from proto/ (Rust generates at build time)
 integration: ## KVM integration tests (Linux host with /dev/kvm; test binaries run under sudo)
 	$(GO) test -exec 'sudo -E' -race -count=1 -tags integration -timeout 15m $(or $(PKG),./...) $(if $(RUN),-run '$(RUN)') -v
 
-bench: build ## Create/restore latency benchmarks on this host
-	$(GO) test -tags integration -run '^$$' -bench . -benchtime 20x ./internal/sandbox/...
+bench: build-agentd ## Golden, pool and end-to-end latency numbers on this host (docs/BENCHMARKS.md)
+	$(MAKE) integration PKG='./internal/pool/ ./internal/daemon/' RUN='TestGoldenAndPool|TestEndToEnd'
 
 audit: ## Vulnerability and license checks
 	govulncheck ./...
 	cd guest && $(CARGO) deny check
 	cd guest && $(CARGO) audit
 
-image: build-agentd ## Build the base guest image (needs root)
-	sudo ./images/build-base.sh $(BIN)/agentd
+IMAGE_DIR ?= /var/lib/agent-comp/images
+
+image: build-agentd ## Build the base guest image and install the kernel into IMAGE_DIR (sudo)
+	sudo AGENTD=$(CURDIR)/$(BIN)/agentd ./images/build-base.sh $(IMAGE_DIR)
+	sudo ./images/install-kernel.sh /var/lib/agent-comp/ci $(IMAGE_DIR)
 
 sync: ## Copy the working tree to the dev host
 	rsync -az --delete \

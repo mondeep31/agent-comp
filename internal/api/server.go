@@ -6,6 +6,8 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +20,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/mondeep31/agent-comp/internal/metrics"
 	"github.com/mondeep31/agent-comp/internal/sandbox"
 )
 
@@ -42,6 +45,8 @@ type Options struct {
 	Logger            *slog.Logger
 	// Extra is mounted under /v1 behind auth, e.g. the MCP endpoint.
 	Extra map[string]http.Handler
+	// Metrics is optional.
+	Metrics *metrics.Metrics
 }
 
 type Server struct {
@@ -65,10 +70,7 @@ func New(opts Options) *Server {
 	}
 }
 
-type (
-	ownerKey    struct{}
-	logOwnerKey struct{}
-)
+type ownerKey struct{}
 
 // Owner returns the authenticated key name for a request.
 func Owner(ctx context.Context) string {
@@ -76,37 +78,75 @@ func Owner(ctx context.Context) string {
 	return s
 }
 
+// reqInfo is filled in by inner handlers and read by the outer logging
+// middleware, which only sees its own copy of the request.
+type reqInfo struct {
+	owner string
+	route string
+}
+
+type reqInfoKey struct{}
+
+func info(r *http.Request) *reqInfo {
+	if ri, ok := r.Context().Value(reqInfoKey{}).(*reqInfo); ok {
+		return ri
+	}
+	return &reqInfo{}
+}
+
 // Handler returns the full HTTP handler.
 func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
-	v1.HandleFunc("POST /v1/sandboxes", s.createSandbox)
-	v1.HandleFunc("GET /v1/sandboxes", s.listSandboxes)
-	v1.HandleFunc("GET /v1/sandboxes/{id}", s.getSandbox)
-	v1.HandleFunc("DELETE /v1/sandboxes/{id}", s.deleteSandbox)
-	v1.HandleFunc("POST /v1/sandboxes/{id}/pause", s.pauseSandbox)
-	v1.HandleFunc("POST /v1/sandboxes/{id}/resume", s.resumeSandbox)
-	v1.HandleFunc("POST /v1/sandboxes/{id}/snapshot", s.snapshotSandbox)
-	v1.HandleFunc("POST /v1/sandboxes/{id}/exec", s.exec)
-	v1.HandleFunc("GET /v1/sandboxes/{id}/exec/ws", s.execWS)
-	v1.HandleFunc("GET /v1/sandboxes/{id}/files", s.readFile)
-	v1.HandleFunc("PUT /v1/sandboxes/{id}/files", s.writeFile)
-	v1.HandleFunc("GET /v1/sandboxes/{id}/ls", s.listDir)
-	v1.HandleFunc("GET /v1/sandboxes/{id}/stat", s.stat)
-	v1.HandleFunc("GET /v1/snapshots", s.listSnapshots)
-	v1.HandleFunc("DELETE /v1/snapshots/{id}", s.deleteSnapshot)
+	route := func(mux *http.ServeMux, pattern string, h http.Handler) {
+		mux.Handle(pattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			info(r).route = pattern
+			h.ServeHTTP(w, r)
+		}))
+	}
+	for pattern, h := range map[string]http.HandlerFunc{
+		"POST /v1/sandboxes":               s.createSandbox,
+		"GET /v1/sandboxes":                s.listSandboxes,
+		"GET /v1/sandboxes/{id}":           s.getSandbox,
+		"DELETE /v1/sandboxes/{id}":        s.deleteSandbox,
+		"POST /v1/sandboxes/{id}/pause":    s.pauseSandbox,
+		"POST /v1/sandboxes/{id}/resume":   s.resumeSandbox,
+		"POST /v1/sandboxes/{id}/snapshot": s.snapshotSandbox,
+		"POST /v1/sandboxes/{id}/exec":     s.exec,
+		"GET /v1/sandboxes/{id}/exec/ws":   s.execWS,
+		"GET /v1/sandboxes/{id}/files":     s.readFile,
+		"PUT /v1/sandboxes/{id}/files":     s.writeFile,
+		"GET /v1/sandboxes/{id}/ls":        s.listDir,
+		"GET /v1/sandboxes/{id}/stat":      s.stat,
+		"GET /v1/snapshots":                s.listSnapshots,
+		"DELETE /v1/snapshots/{id}":        s.deleteSnapshot,
+	} {
+		route(v1, pattern, h)
+	}
 	for pattern, h := range s.opts.Extra {
-		v1.Handle(pattern, h)
+		route(v1, pattern, h)
 	}
 	v1.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "no such route")
 	})
 
 	root := http.NewServeMux()
-	root.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	route(root, "GET /healthz", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
+	}))
 	root.Handle("/v1/", s.authenticate(v1))
 	return s.recoverAndLog(root)
+}
+
+// requestID reuses Cloudflare's ray id or a sane client id, else makes one.
+func requestID(r *http.Request) string {
+	for _, h := range []string{"X-Request-Id", "Cf-Ray"} {
+		if v := r.Header.Get(h); v != "" && len(v) <= 64 && strings.Trim(v, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") == "" {
+			return v
+		}
+	}
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }
 
 type statusWriter struct {
@@ -139,20 +179,30 @@ func (s *Server) recoverAndLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
-		owner := new(string)
-		r = r.WithContext(context.WithValue(r.Context(), logOwnerKey{}, owner))
+		ri := &reqInfo{route: "unmatched"}
+		id := requestID(r)
+		w.Header().Set("X-Request-Id", id)
+		r = r.WithContext(context.WithValue(r.Context(), reqInfoKey{}, ri))
 		defer func() {
-			if v := recover(); v != nil {
-				if v == http.ErrAbortHandler { //nolint:errorlint // sentinel compared by identity, as net/http does
-					panic(v)
-				}
-				s.log.Error("panic serving request", "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))
+			v := recover()
+			if v != nil && v != http.ErrAbortHandler { //nolint:errorlint // sentinel compared by identity, as net/http does
+				s.log.Error("panic serving request", "request_id", id, "path", r.URL.Path, "panic", v, "stack", string(debug.Stack()))
 				if sw.status == 0 {
 					writeError(sw, http.StatusInternalServerError, "internal", "internal error")
 				}
 			}
-			s.log.Info("request", "method", r.Method, "path", r.URL.Path, "status", sw.status,
-				"bytes", sw.bytes, "ms", time.Since(start).Milliseconds(), "owner", *owner)
+			if sw.status == 0 {
+				sw.status = http.StatusOK
+			}
+			elapsed := time.Since(start)
+			s.log.Info("request", "request_id", id, "method", r.Method, "path", r.URL.Path, "route", ri.route,
+				"status", sw.status, "bytes", sw.bytes, "ms", elapsed.Milliseconds(), "owner", ri.owner)
+			if s.opts.Metrics != nil {
+				s.opts.Metrics.ObserveRequest(ri.route, r.Method, sw.status, elapsed)
+			}
+			if v == http.ErrAbortHandler { //nolint:errorlint // as above
+				panic(v)
+			}
 		}()
 		next.ServeHTTP(sw, r)
 	})
@@ -175,9 +225,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			writeError(w, http.StatusTooManyRequests, "rate_limited", "too many requests")
 			return
 		}
-		if slot, ok := r.Context().Value(logOwnerKey{}).(*string); ok {
-			*slot = name
-		}
+		info(r).owner = name
 		r.Header.Set(OwnerHeader, name)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ownerKey{}, name)))
 	})

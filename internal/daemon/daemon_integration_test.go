@@ -35,20 +35,12 @@ func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(r)
 }
 
-// TestEndToEnd drives real Firecracker sandboxes through the HTTP API.
-// Networking is covered by the network package's own test.
-func TestEndToEnd(t *testing.T) {
-	ci := testenv.CI(t)
-	agentd, err := os.ReadFile(filepath.Join(testenv.RepoRoot(), "bin", "agentd"))
-	if err != nil {
-		t.Skipf("bin/agentd missing (make build-agentd): %v", err)
-	}
+// startDaemon runs acd with one image behind a loopback listener and returns
+// a client for it. Networking is covered by the network package's own test:
+// both would manage the same host nftables table.
+func startDaemon(t *testing.T, ctx context.Context, img config.Image, poolSize int) (c *client.Client, addr, token string) {
+	t.Helper()
 	dir := t.TempDir()
-	rootfs := filepath.Join(dir, "rootfs.ext4")
-	testenv.Rootfs(t, ci, rootfs, map[string]testenv.File{
-		"/usr/local/bin/agentd": {Data: agentd, Mode: 0o755},
-	})
-
 	token, line, err := auth.Generate("e2e")
 	if err != nil {
 		t.Fatal(err)
@@ -63,27 +55,20 @@ func TestEndToEnd(t *testing.T) {
 	cfg.Firecracker.ChrootBase = filepath.Join(dir, "jail")
 	cfg.Firecracker.UIDBase = 350000
 	cfg.Firecracker.CgroupParent = "agent-comp-test-daemon"
-	cfg.Images = []config.Image{{Name: "ci", Kernel: filepath.Join(ci, "vmlinux"), Rootfs: rootfs}}
+	cfg.Images = []config.Image{img}
 	cfg.Sandbox.DiskMiB = 1024
-	cfg.Pool.Size = 2
+	cfg.Pool.Size = poolSize
 	cfg.Network.Enabled = false
 	cfg.Auth.APIKeysFile = keysFile
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
-	defer cancel()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	d, err := daemon.New(ctx, cfg, log)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := d.Close(context.WithoutCancel(ctx)); err != nil {
-			t.Errorf("Close: %v", err)
-		}
-	}()
 	ln, err := new(net.ListenConfig).Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -91,15 +76,39 @@ func TestEndToEnd(t *testing.T) {
 	serveCtx, stopServe := context.WithCancel(ctx)
 	served := make(chan error, 1)
 	go func() { served <- d.Serve(serveCtx, ln) }()
-	defer func() {
+	t.Cleanup(func() {
 		stopServe()
 		if err := <-served; err != nil {
 			t.Errorf("Serve: %v", err)
 		}
-	}()
+		if err := d.Close(context.WithoutCancel(ctx)); err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	})
+	addr = ln.Addr().String()
+	return client.New("http://"+addr, token, nil), addr, token
+}
 
-	c := client.New("http://"+ln.Addr().String(), token, nil)
-	if _, err := client.New("http://"+ln.Addr().String(), "ac_bogus", nil).List(ctx); err == nil {
+func agentd(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(testenv.RepoRoot(), "bin", "agentd"))
+	if err != nil {
+		t.Skipf("bin/agentd missing (make build-agentd): %v", err)
+	}
+	return data
+}
+
+// TestEndToEnd drives real Firecracker sandboxes through the HTTP API.
+func TestEndToEnd(t *testing.T) {
+	ci := testenv.CI(t)
+	rootfs := filepath.Join(t.TempDir(), "rootfs.ext4")
+	testenv.Rootfs(t, ci, rootfs, map[string]testenv.File{
+		"/usr/local/bin/agentd": {Data: agentd(t), Mode: 0o755},
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+	c, addr, token := startDaemon(t, ctx, config.Image{Name: "ci", Kernel: filepath.Join(ci, "vmlinux"), Rootfs: rootfs}, 2)
+	if _, err := client.New("http://"+addr, "ac_bogus", nil).List(ctx); err == nil {
 		t.Fatal("bogus key accepted")
 	}
 
@@ -183,7 +192,7 @@ func TestEndToEnd(t *testing.T) {
 	// The same computer through MCP.
 	mc := mcp.NewClient(&mcp.Implementation{Name: "e2e", Version: "v0"}, nil)
 	cs, err := mc.Connect(ctx, &mcp.StreamableClientTransport{
-		Endpoint:   "http://" + ln.Addr().String() + "/v1/mcp",
+		Endpoint:   "http://" + addr + "/v1/mcp",
 		HTTPClient: &http.Client{Transport: bearer(token)},
 	}, nil)
 	if err != nil {
@@ -213,6 +222,50 @@ func TestEndToEnd(t *testing.T) {
 		t.Fatalf("Get after delete: %v", err)
 	}
 	if err := c.DeleteSnapshot(ctx, snap.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestBaseImage boots the image built by `make image` and checks the tools
+// agents rely on.
+func TestBaseImage(t *testing.T) {
+	const images = "/var/lib/agent-comp/images"
+	img := config.Image{Name: "base", Kernel: filepath.Join(images, "vmlinux"), Rootfs: filepath.Join(images, "base.ext4")}
+	for _, f := range []string{img.Kernel, img.Rootfs} {
+		if _, err := os.Stat(f); err != nil {
+			t.Skipf("%v (run make image)", err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+	c, _, _ := startDaemon(t, ctx, img, 1)
+
+	start := time.Now()
+	sb, err := c.Create(ctx, &api.CreateSandboxRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("first create (includes golden build): %v", time.Since(start))
+
+	script := `set -e
+python3 --version; node --version; npm --version; git --version | head -1; gcc --version | head -1
+make --version | head -1; curl --version | head -1; jq --version
+test "$(id -u)" = 0; test "$PWD" = /root
+python3 -c 'import json, sqlite3, venv, ssl; print("python stdlib ok")'
+cd /work && python3 -m venv .venv && .venv/bin/python -c 'print("venv ok")'
+printf 'int main(){return 7;}' > t.c && gcc t.c -o t && { ./t || echo "gcc ok: $?"; }
+test -s /etc/resolv.conf && grep -q nameserver /etc/resolv.conf || echo "no resolv.conf (network disabled)"
+echo "disk: $(df -h / | tail -1)"
+`
+	res, err := c.Exec(ctx, sb.ID, &sandbox.ExecRequest{Command: script, TimeoutSeconds: 120})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("stdout:\n%s", res.Stdout)
+	if res.ExitCode != 0 || !strings.Contains(res.Stdout, "venv ok") || !strings.Contains(res.Stdout, "gcc ok: 7") {
+		t.Fatalf("exit %d, stderr:\n%s", res.ExitCode, res.Stderr)
+	}
+	if err := c.Delete(ctx, sb.ID); err != nil {
 		t.Fatal(err)
 	}
 }
