@@ -62,8 +62,8 @@ build-agentd:
 proto: ## Regenerate Go code from proto/ (Rust generates at build time)
 	buf generate
 
-integration: ## KVM integration tests (Linux host with /dev/kvm only)
-	$(GO) test -race -count=1 -tags integration -timeout 15m ./...
+integration: ## KVM integration tests (Linux host with /dev/kvm; test binaries run under sudo)
+	$(GO) test -exec 'sudo -E' -race -count=1 -tags integration -timeout 15m $(or $(PKG),./...) $(if $(RUN),-run '$(RUN)') -v
 
 bench: build ## Create/restore latency benchmarks on this host
 	$(GO) test -tags integration -run '^$$' -bench . -benchtime 20x ./internal/sandbox/...

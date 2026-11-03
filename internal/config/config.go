@@ -27,12 +27,12 @@ type Config struct {
 	Auth        Auth            `yaml:"auth"`
 }
 
+// Firecracker configures the VMM. Every VM always runs under jailer: snapshot
+// clones depend on each VM seeing identical paths inside its own chroot.
 type Firecracker struct {
 	Binary       string `yaml:"binary"`
 	JailerBinary string `yaml:"jailer_binary"`
-	// UseJailer runs every VM in a chroot with its own uid/gid, cgroup and netns.
-	UseJailer  bool   `yaml:"use_jailer"`
-	ChrootBase string `yaml:"chroot_base"`
+	ChrootBase   string `yaml:"chroot_base"`
 	// UIDBase is the first uid handed to jailed VMs; each VM slot gets UIDBase+slot.
 	UIDBase int `yaml:"uid_base"`
 	// CgroupParent is the cgroup v2 path (relative to /sys/fs/cgroup) that jailed VMs live under.
@@ -117,7 +117,6 @@ func Default() Config {
 		Firecracker: Firecracker{
 			Binary:       "/usr/local/bin/firecracker",
 			JailerBinary: "/usr/local/bin/jailer",
-			UseJailer:    true,
 			ChrootBase:   "/srv/jailer",
 			UIDBase:      200000,
 			CgroupParent: "agent-comp",
@@ -193,7 +192,8 @@ func (c *Config) Validate() error {
 	check(err == nil, "listen %q: must be ip:port", c.Listen)
 	check(c.DataDir != "", "data_dir is required")
 	check(c.Firecracker.Binary != "", "firecracker.binary is required")
-	check(!c.Firecracker.UseJailer || c.Firecracker.JailerBinary != "", "firecracker.jailer_binary is required with use_jailer")
+	check(c.Firecracker.JailerBinary != "", "firecracker.jailer_binary is required")
+	check(c.Firecracker.ChrootBase != "", "firecracker.chroot_base is required")
 	check(c.Firecracker.UIDBase > 0, "firecracker.uid_base must be > 0")
 
 	check(len(c.Images) > 0, "at least one image is required")

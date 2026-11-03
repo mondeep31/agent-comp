@@ -21,6 +21,8 @@ linters:
   settings:
     gosec:
       excludes:
+        # Duplicates errcheck, which already understands deferred Close.
+        - G104
         # Paths come from operator config and sandbox IDs we generate.
         - G304
     revive:
