@@ -3,6 +3,10 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 
 fn main() -> Result<()> {
+    // The kernel passes unrecognized boot parameters to init as argv.
+    if std::process::id() == 1 {
+        return run_init();
+    }
     let arg = std::env::args().nth(1);
     match arg.as_deref() {
         Some("--version") => {
@@ -10,7 +14,6 @@ fn main() -> Result<()> {
             Ok(())
         }
         Some("serve") => serve(),
-        None if std::process::id() == 1 => run_init(),
         _ => {
             eprintln!("usage: agentd [serve | --version]  (runs as init when PID 1)");
             std::process::exit(2);

@@ -18,7 +18,9 @@ use nix::sys::wait::waitpid;
 use nix::unistd::{chdir, pivot_root, sethostname};
 
 const OVERLAY_DEVICE: &str = "/dev/vdb";
-const OVERLAY_MOUNT: &str = "/mnt";
+/// The read-only root may lack any spare directory, but /dev is always a
+/// writable devtmpfs by now. The overlay keeps this mount alive after pivot.
+const OVERLAY_MOUNT: &str = "/dev/.overlay";
 
 /// Never returns under normal operation.
 pub fn run_pid1() -> Result<()> {
@@ -56,6 +58,7 @@ fn pivot_to_overlay() -> Result<()> {
         None::<&str>,
     )
     .context("making / private")?;
+    fs::create_dir_all(OVERLAY_MOUNT).with_context(|| format!("creating {OVERLAY_MOUNT}"))?;
     mount(
         Some(OVERLAY_DEVICE),
         OVERLAY_MOUNT,

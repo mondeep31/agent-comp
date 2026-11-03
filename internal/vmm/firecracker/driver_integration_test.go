@@ -7,13 +7,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/mondeep31/agent-comp/internal/storage"
+	"github.com/mondeep31/agent-comp/internal/testenv"
 	"github.com/mondeep31/agent-comp/internal/vmm"
 )
 
@@ -32,42 +32,13 @@ type fixture struct {
 // newFixture copies the Firecracker CI rootfs and installs a ticking init.
 func newFixture(t *testing.T) fixture {
 	t.Helper()
-	if os.Geteuid() != 0 {
-		t.Skip("integration tests need root (jailer)")
-	}
-	ci := os.Getenv("AC_CI_DIR")
-	if ci == "" {
-		ci = "/var/lib/agent-comp/ci"
-	}
-	kernel := filepath.Join(ci, "vmlinux")
-	if _, err := os.Stat(kernel); err != nil {
-		t.Skipf("CI artifacts missing (run scripts/host/fetch-ci-artifacts.sh): %v", err)
-	}
+	ci := testenv.CI(t)
 	dir := t.TempDir()
 	rootfs := filepath.Join(dir, "rootfs.ext4")
-	if err := storage.CloneFile(filepath.Join(ci, "rootfs.ext4"), rootfs); err != nil {
-		t.Fatal(err)
-	}
-	mnt := filepath.Join(dir, "mnt")
-	if err := os.Mkdir(mnt, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	run(t, "mount", "-o", "loop", rootfs, mnt)
-	if err := os.WriteFile(filepath.Join(mnt, "ac-test-init"), []byte(testInit), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	run(t, "umount", mnt)
-	if err := os.Chmod(rootfs, 0o444); err != nil {
-		t.Fatal(err)
-	}
-	return fixture{dir: dir, kernel: kernel, rootfs: rootfs}
-}
-
-func run(t *testing.T, name string, args ...string) {
-	t.Helper()
-	if out, err := exec.CommandContext(t.Context(), name, args...).CombinedOutput(); err != nil {
-		t.Fatalf("%s %v: %v: %s", name, args, err, out)
-	}
+	testenv.Rootfs(t, ci, rootfs, map[string]testenv.File{
+		"/ac-test-init": {Data: []byte(testInit), Mode: 0o755},
+	})
+	return fixture{dir: dir, kernel: filepath.Join(ci, "vmlinux"), rootfs: rootfs}
 }
 
 func newTestDriver(t *testing.T) *Driver {
