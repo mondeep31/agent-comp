@@ -1,0 +1,12 @@
+/bin/
+/dist/
+/guest/target/
+*.test
+*.out
+coverage.*
+.env
+.env.*
+*.pem
+*.key
+/deploy/secrets/
+.DS_Store

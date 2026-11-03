@@ -1,0 +1,28 @@
+[package]
+name = "agentd"
+description = "Guest agent for agent-comp microVMs: exec, files and post-restore setup over vsock"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1"
+bytes = "1"
+prost = "0.14"
+thiserror = "2"
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt", "sync", "time", "fs"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.30", features = ["fs", "hostname", "mount", "process", "signal", "time"] }
+tokio-vsock = "0.7"
+
+[build-dependencies]
+prost-build = "0.14"
+
+[dev-dependencies]
+tempfile = "3"

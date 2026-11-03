@@ -1,0 +1,176 @@
+syntax = "proto3";
+
+package agentcomp.agentd.v1;
+
+option go_package = "github.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1;agentdv1";
+
+// Wire format between the host (acd) and the guest agent (agentd) over vsock.
+//
+// Every message on a connection is a Frame, prefixed with its encoded length
+// as a big-endian uint32 (max 4 MiB). A connection carries exactly one
+// operation: the host sends the opening frame, then both sides exchange the
+// frames that operation defines. Any side may send Error and close.
+//
+// Operations:
+//   Ping:      host Ping                    -> guest Pong
+//   Exec:      host ExecStart, ExecStdin*, ExecSignal*
+//                                          -> guest ExecOutput*, ExecExit
+//   ReadFile:  host ReadFile                -> guest FileInfo, FileData* (last has eof)
+//   WriteFile: host WriteFile, FileData* (last has eof)
+//                                          -> guest FileInfo
+//   Stat:      host Stat                    -> guest FileInfo
+//   ListDir:   host ListDir                 -> guest DirListing
+//   Configure: host Configure               -> guest Ack
+message Frame {
+  oneof kind {
+    Error error = 1;
+    Ping ping = 2;
+    Pong pong = 3;
+    ExecStart exec_start = 4;
+    ExecStdin exec_stdin = 5;
+    ExecSignal exec_signal = 6;
+    ExecOutput exec_output = 7;
+    ExecExit exec_exit = 8;
+    ReadFile read_file = 9;
+    WriteFile write_file = 10;
+    FileData file_data = 11;
+    FileInfo file_info = 12;
+    Stat stat = 13;
+    ListDir list_dir = 14;
+    DirListing dir_listing = 15;
+    Configure configure = 16;
+    Ack ack = 17;
+  }
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_NOT_FOUND = 1;
+  ERROR_CODE_PERMISSION_DENIED = 2;
+  ERROR_CODE_INVALID_ARGUMENT = 3;
+  ERROR_CODE_ALREADY_EXISTS = 4;
+  ERROR_CODE_TOO_LARGE = 5;
+  ERROR_CODE_INTERNAL = 6;
+}
+
+message Error {
+  ErrorCode code = 1;
+  string message = 2;
+}
+
+message Ping {}
+
+message Pong {
+  string agent_version = 1;
+  uint64 uptime_ms = 2;
+}
+
+message ExecStart {
+  // argv[0] is resolved through PATH. Use ["/bin/sh", "-c", cmd] for shell syntax.
+  repeated string argv = 1;
+  map<string, string> env = 2;
+  string cwd = 3;
+  // 0 means no timeout.
+  uint32 timeout_ms = 4;
+  // When false, the process gets /dev/null as stdin.
+  bool stdin = 5;
+}
+
+message ExecStdin {
+  bytes data = 1;
+  bool eof = 2;
+}
+
+message ExecSignal {
+  // POSIX signal number, delivered to the whole process group.
+  int32 signal = 1;
+}
+
+enum Stream {
+  STREAM_UNSPECIFIED = 0;
+  STREAM_STDOUT = 1;
+  STREAM_STDERR = 2;
+}
+
+message ExecOutput {
+  Stream stream = 1;
+  bytes data = 2;
+}
+
+message ExecExit {
+  // Exit code when the process exited normally, -1 otherwise.
+  int32 exit_code = 1;
+  // Terminating signal, 0 if none.
+  int32 signal = 2;
+  bool timed_out = 3;
+  uint64 duration_ms = 4;
+}
+
+message ReadFile {
+  string path = 1;
+  // 0 means the agent default limit.
+  uint64 max_bytes = 2;
+}
+
+message WriteFile {
+  string path = 1;
+  // Permission bits for a newly created file; 0 means 0644.
+  uint32 mode = 2;
+  bool create_parents = 3;
+  bool append = 4;
+}
+
+message FileData {
+  bytes data = 1;
+  bool eof = 2;
+}
+
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+  FILE_TYPE_FILE = 1;
+  FILE_TYPE_DIR = 2;
+  FILE_TYPE_SYMLINK = 3;
+  FILE_TYPE_OTHER = 4;
+}
+
+message FileInfo {
+  string path = 1;
+  string name = 2;
+  FileType type = 3;
+  uint64 size = 4;
+  uint32 mode = 5;
+  int64 mtime_unix_ms = 6;
+}
+
+message Stat {
+  string path = 1;
+}
+
+message ListDir {
+  string path = 1;
+}
+
+message DirListing {
+  repeated FileInfo entries = 1;
+}
+
+message NetworkConfig {
+  string interface = 1;
+  // e.g. "10.200.0.2/30"
+  string address_cidr = 2;
+  string gateway = 3;
+  repeated string nameservers = 4;
+}
+
+// Sent after boot and after every snapshot restore so restored clones diverge.
+message Configure {
+  string hostname = 1;
+  int64 wall_clock_unix_ms = 2;
+  // Mixed into the guest entropy pool.
+  bytes entropy = 3;
+  NetworkConfig network = 4;
+  // Default environment for subsequent Exec calls.
+  map<string, string> env = 5;
+}
+
+message Ack {}

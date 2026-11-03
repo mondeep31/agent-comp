@@ -1,0 +1,51 @@
+version: "2"
+
+run:
+  timeout: 5m
+  build-tags:
+    - integration
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - contextcheck
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - noctx
+    - revive
+    - unconvert
+    - unparam
+  settings:
+    gosec:
+      excludes:
+        # Paths come from operator config and sandbox IDs we generate.
+        - G304
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+    paths:
+      - gen/
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/mondeep31/agent-comp
+  exclusions:
+    paths:
+      - gen/
