@@ -96,7 +96,7 @@ func TestAgentdInFirecracker(t *testing.T) {
 		JailerBin:      "/usr/local/bin/jailer",
 		ChrootBase:     filepath.Join(dir, "jail"),
 		UIDBase:        310000,
-		CgroupParent:   "agent-comp-test",
+		CgroupParent:   "agent-comp-test-guest",
 		MaxVMs:         4,
 	})
 	if err != nil {

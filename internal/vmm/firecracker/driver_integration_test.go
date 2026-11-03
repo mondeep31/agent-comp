@@ -48,7 +48,7 @@ func newTestDriver(t *testing.T) *Driver {
 		JailerBin:      "/usr/local/bin/jailer",
 		ChrootBase:     filepath.Join(t.TempDir(), "jail"),
 		UIDBase:        300000,
-		CgroupParent:   "agent-comp-test",
+		CgroupParent:   "agent-comp-test-driver",
 		MaxVMs:         8,
 	})
 	if err != nil {

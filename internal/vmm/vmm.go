@@ -30,6 +30,19 @@ type Network struct {
 	BandwidthMbps int
 }
 
+// NetworkProvider hands out per-VM network attachments.
+//
+// Snapshot clones keep the guest's network configuration from the golden VM,
+// so every attachment must look identical from inside the guest (same tap
+// name, guest address and gateway) and differ only on the host side.
+type NetworkProvider interface {
+	Attach(ctx context.Context, id string) (*Network, error)
+	// Detach releases everything Attach created. It is idempotent.
+	Detach(ctx context.Context, id string) error
+	// KernelArgs configures the guest side at first boot, e.g. "ac.ip=... ac.gw=...".
+	KernelArgs() string
+}
+
 // Disks are host paths. The driver links them into the VM's chroot under fixed
 // names, so every clone sees the same guest-side paths.
 type Disks struct {
@@ -87,6 +100,8 @@ type VM interface {
 	Snapshot(ctx context.Context, dst SnapshotFiles) error
 	// DialVsock opens a stream to a guest vsock port.
 	DialVsock(ctx context.Context, port uint32) (net.Conn, error)
+	// OverlayPath is the host path of the VM's private writable disk.
+	OverlayPath() string
 	// Console returns the most recent serial console and VMM output.
 	Console() []byte
 	// Done is closed when the VMM process exits.

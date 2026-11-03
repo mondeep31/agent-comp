@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 
 	agentdv1 "github.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1"
 )
@@ -43,6 +44,16 @@ type Client struct {
 }
 
 func New(dial Dialer) *Client { return &Client{dial: dial} }
+
+// VsockDialer is satisfied by vmm.VM.
+type VsockDialer interface {
+	DialVsock(ctx context.Context, port uint32) (net.Conn, error)
+}
+
+// ForVM returns a client for the agentd inside vm.
+func ForVM(vm VsockDialer) *Client {
+	return New(func(ctx context.Context) (net.Conn, error) { return vm.DialVsock(ctx, Port) })
+}
 
 type conn struct {
 	net.Conn
@@ -115,6 +126,25 @@ func (c *Client) Ping(ctx context.Context) (*agentdv1.Pong, error) {
 		return p, nil
 	}
 	return nil, unexpected(f, "Pong")
+}
+
+// WaitReady pings until agentd answers or ctx ends. Each attempt is bounded so
+// a connection accepted before the guest's listener exists cannot hang it.
+func (c *Client) WaitReady(ctx context.Context) error {
+	const attempt, pause = 250 * time.Millisecond, 5 * time.Millisecond
+	for {
+		actx, cancel := context.WithTimeout(ctx, attempt)
+		_, err := c.Ping(actx)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("guest: agent not ready: %w", errors.Join(ctx.Err(), err))
+		case <-time.After(pause):
+		}
+	}
 }
 
 func (c *Client) Configure(ctx context.Context, cfg *agentdv1.Configure) error {
