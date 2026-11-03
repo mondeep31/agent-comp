@@ -11,15 +11,19 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/mondeep31/agent-comp/internal/api"
 	"github.com/mondeep31/agent-comp/internal/auth"
 	"github.com/mondeep31/agent-comp/internal/client"
+	"github.com/mondeep31/agent-comp/internal/mcpserver"
 	"github.com/mondeep31/agent-comp/internal/sandbox"
 	"github.com/mondeep31/agent-comp/internal/version"
 )
@@ -47,6 +51,9 @@ Snapshots:
   snapshot ID                   snapshot a sandbox
   snapshots                     list snapshots
   rm-snapshot ID
+
+MCP:
+  mcp                           serve the computer tools over stdio, backed by the API
 
   version
 `
@@ -115,6 +122,10 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	switch cmd {
+	case "mcp":
+		// stdout carries the protocol; logs go to stderr.
+		log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		return mcpserver.New(mcpserver.Remote(c), version.Version, log).Run(ctx, &mcp.StdioTransport{})
 	case "create":
 		return create(ctx, c, args)
 	case "ls":

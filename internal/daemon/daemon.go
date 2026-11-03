@@ -13,7 +13,9 @@ import (
 	"github.com/mondeep31/agent-comp/internal/api"
 	"github.com/mondeep31/agent-comp/internal/auth"
 	"github.com/mondeep31/agent-comp/internal/config"
+	"github.com/mondeep31/agent-comp/internal/mcpserver"
 	"github.com/mondeep31/agent-comp/internal/sandbox"
+	"github.com/mondeep31/agent-comp/internal/version"
 )
 
 const reapInterval = 10 * time.Second
@@ -63,6 +65,10 @@ func (d *Daemon) Serve(ctx context.Context, ln net.Listener) error {
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
 	err := srv.Shutdown(shutdownCtx)
+	if errors.Is(err, context.DeadlineExceeded) {
+		// Long-lived streams (MCP SSE, exec WebSockets) never go idle.
+		err = srv.Close()
+	}
 	if serr := <-errc; !errors.Is(serr, http.ErrServerClosed) {
 		err = errors.Join(err, serr)
 	}
@@ -80,11 +86,13 @@ func (d *Daemon) Close(ctx context.Context) error {
 }
 
 func newAPI(d *Daemon) {
+	mcpServer := mcpserver.New(mcpserver.Local(d.manager), version.Version, d.log)
 	d.handler = api.New(api.Options{
 		Manager:           d.manager,
 		Auth:              d.keys,
 		RequestsPerSecond: d.cfg.Limits.RequestsPerSecond,
 		Burst:             d.cfg.Limits.RequestBurst,
 		Logger:            d.log,
+		Extra:             map[string]http.Handler{"/v1/mcp": mcpserver.HTTPHandler(mcpServer)},
 	}).Handler()
 }

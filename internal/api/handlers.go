@@ -16,7 +16,7 @@ func (s *Server) createSandbox(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	info, err := s.m.Create(r.Context(), req.toService(Owner(r.Context())))
+	info, err := s.m.Create(r.Context(), req.ToService(Owner(r.Context())))
 	if err != nil {
 		s.fail(w, r, err)
 		return

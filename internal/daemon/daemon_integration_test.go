@@ -6,13 +6,17 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mondeep31/agent-comp/internal/api"
 	"github.com/mondeep31/agent-comp/internal/auth"
@@ -22,6 +26,14 @@ import (
 	"github.com/mondeep31/agent-comp/internal/sandbox"
 	"github.com/mondeep31/agent-comp/internal/testenv"
 )
+
+type bearer string
+
+func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set("Authorization", "Bearer "+string(b))
+	return http.DefaultTransport.RoundTrip(r)
+}
 
 // TestEndToEnd drives real Firecracker sandboxes through the HTTP API.
 // Networking is covered by the network package's own test.
@@ -167,6 +179,23 @@ func TestEndToEnd(t *testing.T) {
 	if err := c.ReadFile(ctx, first.ID, "/work/notes.txt", &buf); err != nil || buf.String() != "remember me" {
 		t.Fatalf("source after fork write = %q, %v", buf.String(), err)
 	}
+
+	// The same computer through MCP.
+	mc := mcp.NewClient(&mcp.Implementation{Name: "e2e", Version: "v0"}, nil)
+	cs, err := mc.Connect(ctx, &mcp.StreamableClientTransport{
+		Endpoint:   "http://" + ln.Addr().String() + "/v1/mcp",
+		HTTPClient: &http.Client{Transport: bearer(token)},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mres, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "run_command", Arguments: map[string]any{
+		"computer_id": first.ID, "command": "cat /work/notes.txt",
+	}})
+	if err != nil || mres.IsError || !strings.Contains(fmt.Sprint(mres.StructuredContent), "remember me") {
+		t.Fatalf("mcp run_command = %+v, %v", mres, err)
+	}
+	_ = cs.Close()
 
 	if _, err := c.Pause(ctx, first.ID); err != nil {
 		t.Fatal(err)

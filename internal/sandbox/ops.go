@@ -96,7 +96,7 @@ func (m *Manager) Exec(ctx context.Context, owner, id string, req *ExecRequest) 
 	if req.Stdin != "" {
 		stdin = strings.NewReader(req.Stdin)
 	}
-	stdout, stderr := &capped{max: limit}, &capped{max: limit}
+	stdout, stderr := NewCappedBuffer(limit), NewCappedBuffer(limit)
 	exit, err := c.Run(ctx, start, stdin, stdout, stderr)
 	if err != nil {
 		return nil, guestErr(err)
@@ -132,14 +132,19 @@ func (m *Manager) StartExec(ctx context.Context, owner, id string, req *ExecRequ
 	return p, done, nil
 }
 
-// capped keeps the first max bytes and discards the rest.
-type capped struct {
+// CappedBuffer keeps the first max bytes written and discards the rest.
+type CappedBuffer struct {
 	strings.Builder
 	max       int
 	truncated bool
 }
 
-func (c *capped) Write(p []byte) (int, error) {
+func NewCappedBuffer(limit int) *CappedBuffer { return &CappedBuffer{max: limit} }
+
+// Truncated reports whether any bytes were discarded.
+func (c *CappedBuffer) Truncated() bool { return c.truncated }
+
+func (c *CappedBuffer) Write(p []byte) (int, error) {
 	if room := c.max - c.Len(); room < len(p) {
 		c.truncated = true
 		c.Builder.Write(p[:max(room, 0)])

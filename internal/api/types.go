@@ -20,7 +20,8 @@ type CreateSandboxRequest struct {
 	Metadata           map[string]string `json:"metadata,omitempty"`
 }
 
-func (r *CreateSandboxRequest) toService(owner string) sandbox.CreateRequest {
+// ToService converts the request for the sandbox manager.
+func (r *CreateSandboxRequest) ToService(owner string) sandbox.CreateRequest {
 	return sandbox.CreateRequest{
 		Owner:        owner,
 		Image:        r.Image,

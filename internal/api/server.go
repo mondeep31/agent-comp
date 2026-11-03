@@ -23,6 +23,11 @@ import (
 
 const maxJSONBody = 8 << 20
 
+// OwnerHeader carries the authenticated key name to handlers that only see
+// request headers (the MCP SDK). The auth middleware always overwrites it, so
+// clients cannot spoof it.
+const OwnerHeader = "X-Agentcomp-Owner"
+
 // Authenticator maps a bearer token to the key's name.
 type Authenticator interface {
 	Authenticate(token string) (string, bool)
@@ -173,6 +178,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		if slot, ok := r.Context().Value(logOwnerKey{}).(*string); ok {
 			*slot = name
 		}
+		r.Header.Set(OwnerHeader, name)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ownerKey{}, name)))
 	})
 }
