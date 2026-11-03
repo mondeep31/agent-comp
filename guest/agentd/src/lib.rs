@@ -5,6 +5,13 @@
 //! for the wire protocol.
 
 pub mod codec;
+pub mod configure;
+pub mod error;
+pub mod exec;
+pub mod files;
+#[cfg(target_os = "linux")]
+pub mod init;
+pub mod server;
 
 /// Generated protobuf types for `agentcomp.agentd.v1`.
 #[allow(clippy::pedantic, missing_debug_implementations)]
