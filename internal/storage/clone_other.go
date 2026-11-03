@@ -23,6 +23,11 @@ func CloneFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
+	if err := out.Chmod(st.Mode().Perm()); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
 	if _, err := io.Copy(out, in); err != nil {
 		out.Close()
 		os.Remove(dst)

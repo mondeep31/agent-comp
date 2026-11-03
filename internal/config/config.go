@@ -82,6 +82,9 @@ type Pool struct {
 
 type Network struct {
 	Enabled bool `yaml:"enabled"`
+	// Instance tags host network names (namespaces, veths, nftables table)
+	// so test runs and the service can share a host. Empty for the service.
+	Instance string `yaml:"instance"`
 	// CIDR is the address space carved into one /30 per sandbox.
 	CIDR string `yaml:"cidr"`
 	// Uplink is the host interface used for NAT; empty means the default route's interface.
@@ -124,7 +127,7 @@ func Default() Config {
 		Firecracker: Firecracker{
 			Binary:       "/usr/local/bin/firecracker",
 			JailerBinary: "/usr/local/bin/jailer",
-			ChrootBase:   "/srv/jailer",
+			ChrootBase:   "/var/lib/agent-comp/jailer",
 			UIDBase:      200000,
 			CgroupParent: "agent-comp",
 		},

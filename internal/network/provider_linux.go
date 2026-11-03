@@ -32,7 +32,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*Provider, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	alloc, err := newAllocator(cfg.CIDR)
+	alloc, err := newAllocator(cfg.Instance, cfg.CIDR)
 	if err != nil {
 		return nil, err
 	}
@@ -46,10 +46,10 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*Provider, error) {
 	if err := os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1"), 0o600); err != nil {
 		return nil, fmt.Errorf("network: enabling ip_forward: %w", err)
 	}
-	if err := run(ctx, hostRules(cfg.CIDR, cfg.Uplink), "nft", "-f", "-"); err != nil {
+	if err := run(ctx, hostRules(cfg.Instance, cfg.CIDR, cfg.Uplink), "nft", "-f", "-"); err != nil {
 		return nil, fmt.Errorf("network: installing host rules: %w", err)
 	}
-	p.log.Info("network ready", "cidr", cfg.CIDR.String(), "uplink", cfg.Uplink)
+	p.log.Info("network ready", "instance", cfg.Instance, "cidr", cfg.CIDR.String(), "uplink", cfg.Uplink)
 	return p, nil
 }
 
@@ -133,7 +133,7 @@ func (p *Provider) Detach(ctx context.Context, id string) error {
 func (p *Provider) cleanupStale(ctx context.Context) {
 	entries, _ := os.ReadDir("/var/run/netns")
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), nsPrefix) {
+		if strings.HasPrefix(e.Name(), nsPrefix(p.cfg.Instance)) {
 			if err := run(ctx, "", "ip", "netns", "del", e.Name()); err == nil {
 				p.log.Info("removed stale namespace", "netns", e.Name())
 			}
@@ -141,7 +141,7 @@ func (p *Provider) cleanupStale(ctx context.Context) {
 	}
 	links, _ := os.ReadDir("/sys/class/net")
 	for _, e := range links {
-		if strings.HasPrefix(e.Name(), hostIfPrefix) {
+		if strings.HasPrefix(e.Name(), hostIfPrefix(p.cfg.Instance)) {
 			_ = run(ctx, "", "ip", "link", "del", e.Name())
 		}
 	}

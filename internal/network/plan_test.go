@@ -8,7 +8,7 @@ import (
 )
 
 func TestAllocatorAssignsDistinctSlash30s(t *testing.T) {
-	a, err := newAllocator(netip.MustParsePrefix("10.200.0.0/28"))
+	a, err := newAllocator("", netip.MustParsePrefix("10.200.0.0/28"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,7 +20,7 @@ func TestAllocatorAssignsDistinctSlash30s(t *testing.T) {
 	if l1.hostIP.String() != "10.200.0.5" || l1.nsIP.String() != "10.200.0.6" {
 		t.Errorf("slot 1 = %s/%s", l1.hostIP, l1.nsIP)
 	}
-	if l0.hostIf != "acv0000" || l1.nsIf != "acp0001" || l0.ns != "ac-a" {
+	if l0.hostIf != "acv-0000" || l1.nsIf != "acp0001" || l0.ns != "ac-a" {
 		t.Errorf("names = %s %s %s", l0.hostIf, l1.nsIf, l0.ns)
 	}
 	if again, _ := a.allocate("a"); again != l0 {
@@ -39,14 +39,14 @@ func TestAllocatorAssignsDistinctSlash30s(t *testing.T) {
 
 func TestAllocatorRejectsSmallOrV6Prefixes(t *testing.T) {
 	for _, p := range []string{"10.0.0.0/30", "fd00::/64"} {
-		if _, err := newAllocator(netip.MustParsePrefix(p)); err == nil {
+		if _, err := newAllocator("", netip.MustParsePrefix(p)); err == nil {
 			t.Errorf("%s accepted", p)
 		}
 	}
 }
 
 func TestAllocatorWrapsAcrossOctets(t *testing.T) {
-	a, _ := newAllocator(netip.MustParsePrefix("10.200.0.0/16"))
+	a, _ := newAllocator("", netip.MustParsePrefix("10.200.0.0/16"))
 	l := a.lease("x", 64)
 	if l.hostIP.String() != "10.200.1.1" {
 		t.Errorf("slot 64 host ip = %s", l.hostIP)
@@ -76,11 +76,11 @@ func TestNamespaceRulesDenyBeforeAccept(t *testing.T) {
 }
 
 func TestHostRulesAreReplacedAtomically(t *testing.T) {
-	r := hostRules(netip.MustParsePrefix("10.200.0.0/16"), "eth0")
+	r := hostRules("", netip.MustParsePrefix("10.200.0.0/16"), "eth0")
 	if !strings.HasPrefix(r, "table inet agentcomp\ndelete table inet agentcomp\n") {
 		t.Errorf("host rules must recreate the table in one transaction:\n%s", r)
 	}
-	for _, want := range []string{`iifname "acv*" counter drop`, `oifname != "eth0"`, "ip saddr 10.200.0.0/16"} {
+	for _, want := range []string{`iifname "acv-*" counter drop`, `oifname != "eth0"`, "ip saddr 10.200.0.0/16"} {
 		if !strings.Contains(r, want) {
 			t.Errorf("host rules missing %q", want)
 		}
@@ -91,5 +91,24 @@ func TestKernelArgs(t *testing.T) {
 	c := Config{Nameservers: []string{"1.1.1.1", "8.8.8.8"}}
 	if got := c.KernelArgs(); got != "ac.ip=172.16.0.2/30 ac.gw=172.16.0.1 ac.dns=1.1.1.1,8.8.8.8" {
 		t.Errorf("KernelArgs = %q", got)
+	}
+}
+
+func TestInstancesDoNotOverlap(t *testing.T) {
+	a, _ := newAllocator("t", netip.MustParsePrefix("10.200.0.0/16"))
+	l, _ := a.allocate("sb-1")
+	if l.hostIf != "acvt-0000" || l.ns != "act-sb-1" {
+		t.Fatalf("lease = %+v", l)
+	}
+	for _, other := range []string{"", "tt", "x"} {
+		if strings.HasPrefix(l.hostIf, hostIfPrefix(other)) || strings.HasPrefix(l.ns, nsPrefix(other)) {
+			t.Errorf("instance %q would claim instance t's names", other)
+		}
+	}
+	if r := hostRules("t", netip.MustParsePrefix("10.200.0.0/16"), "eth0"); !strings.Contains(r, "table inet agentcomp_t {") || !strings.Contains(r, `"acvt-*"`) {
+		t.Fatalf("rules:\n%s", r)
+	}
+	if _, err := ParseConfig("Bad!", "10.0.0.0/16", "", nil, nil, 0); err == nil {
+		t.Fatal("bad instance accepted")
 	}
 }

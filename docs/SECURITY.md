@@ -60,7 +60,7 @@ automated test, ⏳ open.
 | Control | Status | Where |
 | --- | --- | --- |
 | acd listens on loopback only; a non-loopback `listen` logs a warning | 🔶 | `cmd/acd` |
-| Public ingress only through Cloudflare Tunnel (outbound-only connection) | ⏳ | ingress stage |
+| Public ingress only through Cloudflare Tunnel (outbound-only connection) | ✅ | `deploy/agent-comp-tunnel.service`, `scripts/host/smoke-api.sh` through the tunnel |
 | Bearer API keys: 256-bit random, stored as SHA-256 digests, compared in constant time, reload on SIGHUP | ✅ | `internal/auth` |
 | Every resource is owned by a key; other keys get 404 (REST, WebSocket and MCP) | ✅ | `TestOwnershipIsolation`, `TestToolsOverHTTP` |
 | MCP tools take the owner from a header the auth middleware always overwrites | ✅ | `TestToolsOverHTTP` (spoofed header) |
@@ -74,8 +74,10 @@ automated test, ⏳ open.
 
 | Control | Status | Where |
 | --- | --- | --- |
-| systemd unit with a capability bounding set, `NoNewPrivileges`, `ProtectSystem=strict` | 🔶 | `deploy/acd.service` |
-| No secrets in the repo or in shared agent memory; the tunnel token lives in a root-only EnvironmentFile | ✅ | process rule, `.gitignore` |
+| systemd unit with a capability bounding set, `NoNewPrivileges`, `ProtectSystem=strict`, `UMask=0077` | 🔶 | `deploy/acd.service`, verified on comp-agents |
+| cloudflared runs as a dynamic user with heavy sandboxing; the token is a systemd credential, never in argv or the environment | 🔶 | `deploy/agent-comp-tunnel.service` |
+| No secrets in the repo or in shared agent memory; the tunnel token lives in root-only `/etc/agent-comp/tunnel-token` | ✅ | process rule, `.gitignore` |
+| The smoke test reads the API key from a file and passes it to curl through a 0600 header file | 🔶 | `scripts/host/smoke-api.sh` |
 | Base image has no SSH host keys, apt lists or machine-id baked in | 🔶 | `images/build-base.sh` |
 | Package manifest recorded per image build | 🔶 | `base.manifest` |
 | Dependency vulnerability and license checks (`make audit`) | ⏳ | wired into CI in the GitHub Actions stage |

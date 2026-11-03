@@ -40,13 +40,13 @@ func diagnose(ctx context.Context, t *testing.T, inst *pool.Instance) {
 	t.Helper()
 	_, guestView := sh(ctx, t, inst, "ip addr; ip route; ip neigh; cat /etc/resolv.conf; ping -c1 -W1 172.16.0.1")
 	t.Logf("guest view:\n%s", guestView)
-	ns := "--net=/var/run/netns/ac-" + inst.ID
+	ns := "--net=/var/run/netns/act-" + inst.ID
 	for _, args := range [][]string{
 		{"nsenter", ns, "--", "nft", "list", "ruleset"},
 		{"nsenter", ns, "--", "ip", "-s", "link"},
 		{"nsenter", ns, "--", "ip", "route"},
 		{"nsenter", ns, "--", "sysctl", "net.ipv4.ip_forward"},
-		{"nft", "list", "table", "inet", "agentcomp"},
+		{"nft", "list", "table", "inet", "agentcomp_t"},
 		{"nsenter", ns, "--", "cat", "/proc/net/nf_conntrack"},
 		{"iptables-save"},
 		{"nft", "list", "tables"},
@@ -87,7 +87,7 @@ func TestSandboxEgressPolicy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
 
-	cfg, err := network.ParseConfig("10.201.0.0/24", "", config.Default().Network.Nameservers, config.DefaultDenyCIDRs(), 0)
+	cfg, err := network.ParseConfig("t", "10.201.0.0/24", "", config.Default().Network.Nameservers, config.DefaultDenyCIDRs(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestSandboxEgressPolicy(t *testing.T) {
 	}
 	entries, _ := os.ReadDir("/var/run/netns")
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "ac-") {
+		if strings.HasPrefix(e.Name(), "act-") {
 			t.Errorf("namespace left behind: %s", e.Name())
 		}
 	}

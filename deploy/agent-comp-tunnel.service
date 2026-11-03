@@ -1,0 +1,42 @@
+[Unit]
+Description=Cloudflare Tunnel to the agent-comp API
+Documentation=https://github.com/mondeep31/agent-comp/blob/main/docs/DEPLOY.md
+After=network-online.target acd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The tunnel token is a secret: it lives only in this root-only file and
+# reaches cloudflared as a systemd credential, never in argv or the
+# environment.
+LoadCredential=tunnel-token:/etc/agent-comp/tunnel-token
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate tunnel --metrics 127.0.0.1:9465 run --token-file ${CREDENTIALS_DIRECTORY}/tunnel-token
+Restart=always
+RestartSec=5s
+
+DynamicUser=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

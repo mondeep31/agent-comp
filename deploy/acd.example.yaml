@@ -10,7 +10,8 @@ data_dir: /var/lib/agent-comp
 firecracker:
   binary: /usr/local/bin/firecracker
   jailer_binary: /usr/local/bin/jailer
-  chroot_base: /srv/jailer
+  # Keep under data_dir: images and jails must be on one mount for hard links.
+  chroot_base: /var/lib/agent-comp/jailer
   uid_base: 200000
   cgroup_parent: agent-comp
 

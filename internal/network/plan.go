@@ -3,10 +3,10 @@
 //
 // Layout for one VM (slot n, /30 number n inside the configured CIDR):
 //
-//	guest eth0 172.16.0.2/30 --- tap0 172.16.0.1/30          [netns ac-<id>]
+//	guest eth0 172.16.0.2/30 --- tap0 172.16.0.1/30          [netns ac<inst>-<id>]
 //	                             acp<n> <cidr base + 4n + 2>/30
 //	                                |  veth
-//	                             acv<n> <cidr base + 4n + 1>/30 [host netns]
+//	                             acv<inst>-<n> <cidr base + 4n + 1>/30 [host netns]
 //	                                |  forward, masquerade
 //	                             uplink
 //
@@ -15,6 +15,11 @@
 // guest is source-NATed to the veth address and filtered against the deny
 // list; on the host, forwarding from acv* is only allowed to the uplink and
 // sandboxes can never reach host-local addresses.
+//
+// Config.Instance tags every host-side name (namespaces, veths, the nftables
+// table), so several providers can share a host, e.g. a test run next to the
+// service. The trailing "-" keeps one instance's prefixes from matching
+// another's.
 package network
 
 import (
@@ -22,23 +27,36 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"strings"
 	"sync"
 )
 
 const (
-	TapName   = "tap0"
-	GuestMAC  = "06:00:ac:10:00:02"
-	GuestCIDR = "172.16.0.2/30"
-	GatewayIP = "172.16.0.1"
-	// hostIfPrefix matches every host-side veth in nftables ("acv*").
-	hostIfPrefix = "acv"
-	nsIfPrefix   = "acp"
-	nsPrefix     = "ac-"
+	TapName    = "tap0"
+	GuestMAC   = "06:00:ac:10:00:02"
+	GuestCIDR  = "172.16.0.2/30"
+	GatewayIP  = "172.16.0.1"
+	nsIfPrefix = "acp"
 )
+
+var instanceRe = regexp.MustCompile(`^[a-z0-9]{0,4}$`)
+
+func hostIfPrefix(instance string) string { return "acv" + instance + "-" }
+
+func nsPrefix(instance string) string { return "ac" + instance + "-" }
+
+func tableName(instance string) string {
+	if instance == "" {
+		return "agentcomp"
+	}
+	return "agentcomp_" + instance
+}
 
 // Config is the subset of acd's network configuration the provider needs.
 type Config struct {
+	// Instance is 0-4 lowercase letters or digits; "" for the service.
+	Instance    string
 	CIDR        netip.Prefix
 	Uplink      string
 	Nameservers []string
@@ -70,23 +88,24 @@ func (l lease) nsPath() string { return "/var/run/netns/" + l.ns }
 
 // allocator hands out /30 slots from the configured CIDR.
 type allocator struct {
-	base  netip.Addr
-	mu    sync.Mutex
-	used  []bool
-	byID  map[string]lease
-	limit int
+	instance string
+	base     netip.Addr
+	mu       sync.Mutex
+	used     []bool
+	byID     map[string]lease
+	limit    int
 }
 
 var errExhausted = errors.New("network: address space exhausted")
 
-func newAllocator(cidr netip.Prefix) (*allocator, error) {
+func newAllocator(instance string, cidr netip.Prefix) (*allocator, error) {
 	if !cidr.Addr().Is4() || cidr.Bits() > 28 {
 		return nil, fmt.Errorf("network: %s must be an IPv4 prefix of /28 or larger", cidr)
 	}
 	n := 1 << (30 - cidr.Bits())
 	// Interface names are capped at 15 bytes; four hex digits keep them short.
 	n = min(n, 1<<16)
-	return &allocator{base: cidr.Masked().Addr(), used: make([]bool, n), byID: map[string]lease{}, limit: n}, nil
+	return &allocator{instance: instance, base: cidr.Masked().Addr(), used: make([]bool, n), byID: map[string]lease{}, limit: n}, nil
 }
 
 func (a *allocator) get(id string) (lease, bool) {
@@ -124,8 +143,8 @@ func (a *allocator) lease(id string, slot int) lease {
 	}
 	return lease{
 		slot:   slot,
-		ns:     nsPrefix + id,
-		hostIf: fmt.Sprintf("%s%04x", hostIfPrefix, slot),
+		ns:     nsPrefix(a.instance) + id,
+		hostIf: fmt.Sprintf("%s%04x", hostIfPrefix(a.instance), slot),
 		nsIf:   fmt.Sprintf("%s%04x", nsIfPrefix, slot),
 		hostIP: ip(1),
 		nsIP:   ip(2),
@@ -144,10 +163,10 @@ func (a *allocator) release(id string) {
 // hostRules is the host-namespace ruleset, replaced atomically at startup.
 // The empty prerouting nat chain is required: without it, replies to
 // masqueraded traffic are never translated back.
-func hostRules(cidr netip.Prefix, uplink string) string {
-	return fmt.Sprintf(`table inet agentcomp
-delete table inet agentcomp
-table inet agentcomp {
+func hostRules(instance string, cidr netip.Prefix, uplink string) string {
+	return fmt.Sprintf(`table inet %[4]s
+delete table inet %[4]s
+table inet %[4]s {
 	chain input {
 		type filter hook input priority filter - 10; policy accept;
 		iifname "%[1]s*" counter drop
@@ -167,7 +186,7 @@ table inet agentcomp {
 		ip saddr %[3]s oifname "%[2]s" masquerade
 	}
 }
-`, hostIfPrefix, uplink, cidr.Masked())
+`, hostIfPrefix(instance), uplink, cidr.Masked(), tableName(instance))
 }
 
 // nsRules runs inside one VM's namespace.
@@ -208,12 +227,15 @@ func nsRules(l lease, deny []netip.Prefix) string {
 }
 
 // ParseConfig converts string settings into a Config.
-func ParseConfig(cidr, uplink string, nameservers, deny []string, bandwidthMbps int) (Config, error) {
+func ParseConfig(instance, cidr, uplink string, nameservers, deny []string, bandwidthMbps int) (Config, error) {
+	if !instanceRe.MatchString(instance) {
+		return Config{}, fmt.Errorf("network: instance %q: want 0-4 lowercase letters or digits", instance)
+	}
 	p, err := netip.ParsePrefix(cidr)
 	if err != nil {
 		return Config{}, fmt.Errorf("network: cidr: %w", err)
 	}
-	c := Config{CIDR: p, Uplink: uplink, Nameservers: nameservers, BandwidthMbps: bandwidthMbps}
+	c := Config{Instance: instance, CIDR: p, Uplink: uplink, Nameservers: nameservers, BandwidthMbps: bandwidthMbps}
 	for _, d := range deny {
 		dp, err := netip.ParsePrefix(d)
 		if err != nil {

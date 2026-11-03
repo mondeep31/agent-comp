@@ -33,6 +33,11 @@ func CloneFile(src, dst string) (err error) {
 			os.Remove(dst)
 		}
 	}()
+	// The mode must not depend on the process umask: jailed VMs read these
+	// files under other uids.
+	if err := out.Chmod(st.Mode().Perm()); err != nil {
+		return err
+	}
 
 	if unix.IoctlFileClone(int(out.Fd()), int(in.Fd())) == nil {
 		return nil

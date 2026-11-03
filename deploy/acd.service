@@ -14,6 +14,7 @@ RestartSec=2s
 KillMode=mixed
 TimeoutStopSec=45s
 LimitNOFILE=1048576
+TasksMax=infinity
 
 # acd must stay root: jailer needs chroot, mknod, setuid/setgid and cgroup
 # writes, and networking needs netns and nftables. Everything else is
@@ -21,7 +22,9 @@ LimitNOFILE=1048576
 CapabilityBoundingSet=CAP_SYS_ADMIN CAP_NET_ADMIN CAP_NET_RAW CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_FSETID CAP_MKNOD CAP_SYS_CHROOT CAP_KILL CAP_SYS_RESOURCE
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/agent-comp /srv/jailer /sys/fs/cgroup /run /var/run
+# Jails live under data_dir: images, golden snapshots and jails must share
+# one mount for hard links, and ProtectSystem gives each path its own mount.
+ReadWritePaths=/var/lib/agent-comp /sys/fs/cgroup /run /var/run
 ProtectHome=yes
 PrivateTmp=yes
 ProtectKernelLogs=yes

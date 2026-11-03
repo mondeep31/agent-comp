@@ -27,8 +27,13 @@ import (
 	"github.com/mondeep31/agent-comp/internal/vmm"
 )
 
-// DefaultBootArgs boots straight into agentd as init.
-const DefaultBootArgs = "console=ttyS0 reboot=k panic=1 pci=off init=/usr/local/bin/agentd"
+// DefaultBootArgs boots straight into agentd as init. Pooled VMs sit paused
+// for minutes, and on resume the guest sees the clock jump and reports
+// lockups and stalls; printing those over the emulated UART costs ~150 ms,
+// so the watchdogs are off and the console only carries errors.
+const DefaultBootArgs = "console=ttyS0 reboot=k panic=1 pci=off quiet loglevel=3 " +
+	"nowatchdog nosoftlockup workqueue.watchdog_thresh=0 rcupdate.rcu_cpu_stall_suppress=1 " +
+	"init=/usr/local/bin/agentd"
 
 // Shape is the part of a sandbox's size that is baked into its snapshot.
 type Shape struct {

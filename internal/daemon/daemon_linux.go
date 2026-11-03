@@ -57,7 +57,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (_ *Daemon, e
 	var netProvider vmm.NetworkProvider
 	if cfg.Network.Enabled {
 		n := cfg.Network
-		ncfg, err := network.ParseConfig(n.CIDR, n.Uplink, n.Nameservers, n.DenyCIDRs, cfg.Limits.NetBandwidthMbps)
+		ncfg, err := network.ParseConfig(n.Instance, n.CIDR, n.Uplink, n.Nameservers, n.DenyCIDRs, cfg.Limits.NetBandwidthMbps)
 		if err != nil {
 			return nil, err
 		}

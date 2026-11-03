@@ -58,3 +58,28 @@ Test: `make integration PKG=./internal/daemon/ RUN=TestEndToEnd`. The full acd s
 | dev-nested-comp-agents | First create, including the golden build | 3.4 s |
 | dev-nested-comp-agents | Warm `POST /v1/sandboxes` until the response arrives (agentd configured) | 22-35 ms |
 | dev-nested-comp-agents | Fork from a user snapshot (`from_snapshot`) | 98 ms |
+
+### Deployed service and tunnel
+
+acd as the systemd unit with the Ubuntu 24.04 base image, networking and a
+pool of 4, measured with `scripts/host/smoke-api.sh` and `acctl`. "Server"
+is the `startup_ms` acd reports; "client" is the round trip of
+`POST /v1/sandboxes` seen by curl.
+
+| Host tag | Path | Result |
+| --- | --- | --- |
+| dev-nested-comp-agents | Warm create, server, pool VM paused for 3+ min (before the fix below) | 170-189 ms |
+| dev-nested-comp-agents | Warm create, server, pool VM paused for 3+ min (after) | 37-44 ms |
+| dev-nested-comp-agents | Warm create, client, through a Cloudflare quick tunnel (edge bom06) from the host | 578 ms |
+| dev-nested-comp-agents | Silent 130 s WebSocket exec through the tunnel | survives |
+
+Pooled VMs that had been paused for minutes were 4-5x slower to hand out
+than fresh ones. On resume the guest kernel saw the clock jump, reported a
+"workqueue lockup" and printed about 30 lines over the emulated serial
+console. The default boot args now disable the soft-lockup, workqueue and RCU
+stall watchdogs and set `quiet loglevel=3`.
+
+Most of the tunnel round trip is the path from the host to the Cloudflare
+edge and back (twice, since the client also ran on the host); an agent
+calling from elsewhere pays one leg to its nearest edge plus the
+edge-to-host leg.
