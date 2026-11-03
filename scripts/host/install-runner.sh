@@ -49,16 +49,18 @@ if [ ! -x "$RUNNER_DIR/config.sh" ]; then
   "$RUNNER_DIR/bin/installdependencies.sh" >/dev/null
 fi
 
-printf '%s\n' "$home/.cargo/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  | install -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0644 /dev/stdin "$RUNNER_DIR/.path"
-
 if [ ! -f "$RUNNER_DIR/.runner" ]; then
   sudo -u "$RUNNER_USER" -H "$RUNNER_DIR/config.sh" --unattended \
     --url "https://github.com/$REPO" --token "$TOKEN" \
     --name "$(hostname)-kvm" --labels kvm --work _work --replace
 fi
 
+# config.sh writes .path from its own environment; replace it afterwards.
+printf '%s\n' "$home/.cargo/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  | install -o "$RUNNER_USER" -g "$RUNNER_USER" -m 0644 /dev/stdin "$RUNNER_DIR/.path"
+
 cd "$RUNNER_DIR"
 ./svc.sh install "$RUNNER_USER" >/dev/null 2>&1 || true
+./svc.sh stop >/dev/null 2>&1 || true
 ./svc.sh start
 ./svc.sh status | head -5
