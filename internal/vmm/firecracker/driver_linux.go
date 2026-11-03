@@ -94,7 +94,27 @@ func New(opts Options) (*Driver, error) {
 	if err := os.MkdirAll(opts.ChrootBase, 0o750); err != nil {
 		return nil, err
 	}
-	return &Driver{opts: opts, log: opts.Logger, slots: make([]bool, opts.MaxVMs)}, nil
+	d := &Driver{opts: opts, log: opts.Logger, slots: make([]bool, opts.MaxVMs)}
+	d.cleanupStale()
+	return d, nil
+}
+
+// cleanupStale removes jails and cgroups left by a previous process. Their
+// VMMs died with it (Pdeathsig), so nothing in them is live.
+func (d *Driver) cleanupStale() {
+	jails := filepath.Join(d.opts.ChrootBase, filepath.Base(d.opts.FirecrackerBin))
+	entries, _ := os.ReadDir(jails)
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(jails, e.Name())); err == nil {
+			d.log.Info("removed stale jail", "id", e.Name())
+		}
+	}
+	cgroups, _ := os.ReadDir(filepath.Join(cgroupRoot, d.opts.CgroupParent))
+	for _, e := range cgroups {
+		if e.IsDir() {
+			_ = os.Remove(filepath.Join(cgroupRoot, d.opts.CgroupParent, e.Name()))
+		}
+	}
 }
 
 func ensureCgroupParent(parent string) error {

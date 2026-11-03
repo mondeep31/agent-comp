@@ -16,7 +16,8 @@ const MaxFrameBytes = 4 << 20
 
 var errFrameTooLarge = errors.New("guest: frame too large")
 
-func writeFrame(w io.Writer, f *agentdv1.Frame) error {
+// WriteFrame writes one length-prefixed frame.
+func WriteFrame(w io.Writer, f *agentdv1.Frame) error {
 	b, err := proto.Marshal(f)
 	if err != nil {
 		return fmt.Errorf("guest: encoding frame: %w", err)
@@ -31,8 +32,8 @@ func writeFrame(w io.Writer, f *agentdv1.Frame) error {
 	return err
 }
 
-// readFrame returns io.EOF only on a clean close between frames.
-func readFrame(r io.Reader) (*agentdv1.Frame, error) {
+// ReadFrame returns io.EOF only on a clean close between frames.
+func ReadFrame(r io.Reader) (*agentdv1.Frame, error) {
 	var hdr [4]byte
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {
 		return nil, err

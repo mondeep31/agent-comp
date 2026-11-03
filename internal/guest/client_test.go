@@ -29,7 +29,7 @@ func fakeAgent(t *testing.T, handle func(r *bufio.Reader, w net.Conn)) *Client {
 
 func mustRead(t *testing.T, r io.Reader) *agentdv1.Frame {
 	t.Helper()
-	f, err := readFrame(r)
+	f, err := ReadFrame(r)
 	if err != nil {
 		t.Errorf("fake agent read: %v", err)
 		return &agentdv1.Frame{}
@@ -37,29 +37,29 @@ func mustRead(t *testing.T, r io.Reader) *agentdv1.Frame {
 	return f
 }
 
-func send(w io.Writer, f *agentdv1.Frame) { _ = writeFrame(w, f) }
+func send(w io.Writer, f *agentdv1.Frame) { _ = WriteFrame(w, f) }
 
 func TestFrameRoundTrip(t *testing.T) {
 	var buf bytes.Buffer
 	in := &agentdv1.Frame{Kind: &agentdv1.Frame_Stat{Stat: &agentdv1.Stat{Path: "/etc"}}}
-	if err := writeFrame(&buf, in); err != nil {
+	if err := WriteFrame(&buf, in); err != nil {
 		t.Fatal(err)
 	}
-	out, err := readFrame(&buf)
+	out, err := ReadFrame(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := out.GetStat().GetPath(); got != "/etc" {
 		t.Fatalf("path = %q", got)
 	}
-	if _, err := readFrame(&buf); !errors.Is(err, io.EOF) {
+	if _, err := ReadFrame(&buf); !errors.Is(err, io.EOF) {
 		t.Fatalf("want io.EOF at clean end, got %v", err)
 	}
 }
 
 func TestReadFrameRejectsOversize(t *testing.T) {
 	r := bytes.NewReader([]byte{0xff, 0xff, 0xff, 0xff})
-	if _, err := readFrame(r); !errors.Is(err, errFrameTooLarge) {
+	if _, err := ReadFrame(r); !errors.Is(err, errFrameTooLarge) {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -178,7 +178,7 @@ func TestStartCancelClosesConnection(t *testing.T) {
 	closed := make(chan struct{})
 	c := fakeAgent(t, func(r *bufio.Reader, _ net.Conn) {
 		mustRead(t, r)
-		_, _ = readFrame(r) // blocks until the host closes
+		_, _ = ReadFrame(r) // blocks until the host closes
 		close(closed)
 	})
 	ctx, cancel := context.WithCancel(t.Context())

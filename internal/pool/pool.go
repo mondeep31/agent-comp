@@ -49,14 +49,19 @@ type Instance struct {
 	// Warm is true when the VM came from the pool rather than an on-demand restore.
 	Warm bool
 
-	pool *Pool
-	once sync.Once
-	err  error
+	destroy func(context.Context) error
+	once    sync.Once
+	err     error
+}
+
+// NewInstance wraps a VM started outside a pool, e.g. by tests or another source.
+func NewInstance(id string, key golden.Key, vm vmm.VM, destroy func(context.Context) error) *Instance {
+	return &Instance{ID: id, Key: key, VM: vm, Guest: guest.ForVM(vm), destroy: destroy}
 }
 
 // Destroy stops the VM and releases its network. Safe to call more than once.
 func (i *Instance) Destroy(ctx context.Context) error {
-	i.once.Do(func() { i.err = i.pool.destroy(ctx, i.ID, i.VM) })
+	i.once.Do(func() { i.err = i.destroy(ctx) })
 	return i.err
 }
 
@@ -262,11 +267,17 @@ func (p *Pool) prewarm(ctx context.Context, key golden.Key) (*Instance, error) {
 }
 
 // restore starts a new, running VM from key's golden snapshot.
-func (p *Pool) restore(ctx context.Context, key golden.Key) (inst *Instance, err error) {
+func (p *Pool) restore(ctx context.Context, key golden.Key) (*Instance, error) {
 	snap, err := p.opts.Snapshots.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
+	return p.Restore(ctx, snap)
+}
+
+// Restore starts a new, running VM from any snapshot, such as a user's fork.
+func (p *Pool) Restore(ctx context.Context, snap *golden.Snapshot) (inst *Instance, err error) {
+	key := snap.Key
 	id := NewID()
 	overlay := filepath.Join(p.opts.Dir, id+".ext4")
 	if err := storage.CloneFile(snap.Overlay, overlay); err != nil {
@@ -301,7 +312,7 @@ func (p *Pool) restore(ctx context.Context, key golden.Key) (inst *Instance, err
 	if err != nil {
 		return nil, fmt.Errorf("pool: restoring %s: %w", key, err)
 	}
-	return &Instance{ID: id, Key: key, VM: vm, Guest: guest.ForVM(vm), pool: p}, nil
+	return NewInstance(id, key, vm, func(ctx context.Context) error { return p.destroy(ctx, id, vm) }), nil
 }
 
 func (p *Pool) destroy(ctx context.Context, id string, vm vmm.VM) error {

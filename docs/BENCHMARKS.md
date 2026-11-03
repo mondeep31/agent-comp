@@ -48,3 +48,13 @@ Test: `make integration PKG=./internal/network/`. Each VM gets a network namespa
 Namespace setup (two `ip -batch` calls, sysctls, one `nft -f`) adds about 70 ms to an on-demand restore. Warm pool VMs are attached before they are pooled, so warm acquires do not pay it.
 
 The dev host's upstream network drops all traffic to 1.1.1.1, so default resolvers are 8.8.8.8 and 1.0.0.1 and agentd writes `options timeout:2 attempts:2` to resolv.conf.
+
+## API end to end
+
+Test: `make integration PKG=./internal/daemon/ RUN=TestEndToEnd`. The full acd stack (pool of 2, no network) runs behind the HTTP API on loopback, measured with `-race`.
+
+| Host tag | Path | Result |
+| --- | --- | --- |
+| dev-nested-comp-agents | First create, including the golden build | 3.4 s |
+| dev-nested-comp-agents | Warm `POST /v1/sandboxes` until the response arrives (agentd configured) | 22-35 ms |
+| dev-nested-comp-agents | Fork from a user snapshot (`from_snapshot`) | 98 ms |

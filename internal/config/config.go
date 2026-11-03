@@ -57,12 +57,16 @@ type SandboxDefaults struct {
 type Limits struct {
 	MaxSandboxes       int           `yaml:"max_sandboxes"`
 	MaxSandboxesPerKey int           `yaml:"max_sandboxes_per_key"`
+	MaxSnapshotsPerKey int           `yaml:"max_snapshots_per_key"`
 	MaxVCPU            int           `yaml:"max_vcpu"`
 	MaxMemoryMiB       int           `yaml:"max_memory_mib"`
 	MaxDiskMiB         int           `yaml:"max_disk_mib"`
 	MaxTTL             time.Duration `yaml:"max_ttl"`
 	MaxExecTimeout     time.Duration `yaml:"max_exec_timeout"`
 	MaxFileBytes       int64         `yaml:"max_file_bytes"`
+	// RequestsPerSecond and RequestBurst rate-limit each API key.
+	RequestsPerSecond float64 `yaml:"requests_per_second"`
+	RequestBurst      int     `yaml:"request_burst"`
 	// Per-VM I/O rate limits enforced by Firecracker; 0 disables.
 	DiskBandwidthMiBps int `yaml:"disk_bandwidth_mibps"`
 	NetBandwidthMbps   int `yaml:"net_bandwidth_mbps"`
@@ -132,12 +136,15 @@ func Default() Config {
 		Limits: Limits{
 			MaxSandboxes:       64,
 			MaxSandboxesPerKey: 16,
+			MaxSnapshotsPerKey: 8,
 			MaxVCPU:            2,
 			MaxMemoryMiB:       2048,
 			MaxDiskMiB:         16384,
 			MaxTTL:             24 * time.Hour,
 			MaxExecTimeout:     30 * time.Minute,
 			MaxFileBytes:       64 << 20,
+			RequestsPerSecond:  20,
+			RequestBurst:       40,
 			DiskBandwidthMiBps: 200,
 			NetBandwidthMbps:   200,
 		},
@@ -151,6 +158,7 @@ func Default() Config {
 			Nameservers: []string{"8.8.8.8", "1.0.0.1"},
 			DenyCIDRs:   DefaultDenyCIDRs(),
 		},
+		Auth: Auth{APIKeysFile: "/etc/agent-comp/api-keys"}, //nolint:gosec // a path, not a credential
 	}
 }
 
@@ -213,8 +221,10 @@ func (c *Config) Validate() error {
 	check(s.IdleTimeout > 0, "sandbox.idle_timeout must be > 0")
 	check(l.MaxSandboxes > 0, "limits.max_sandboxes must be > 0")
 	check(l.MaxSandboxesPerKey > 0, "limits.max_sandboxes_per_key must be > 0")
+	check(l.MaxSnapshotsPerKey >= 0, "limits.max_snapshots_per_key must be >= 0")
 	check(l.MaxFileBytes > 0, "limits.max_file_bytes must be > 0")
 	check(l.MaxExecTimeout > 0, "limits.max_exec_timeout must be > 0")
+	check(l.RequestsPerSecond > 0 && l.RequestBurst >= 1, "limits.requests_per_second must be > 0 and limits.request_burst >= 1")
 
 	check(c.Pool.Size >= 0, "pool.size must be >= 0")
 	check(c.Pool.RefillConcurrency >= 1, "pool.refill_concurrency must be >= 1")

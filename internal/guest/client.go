@@ -80,11 +80,11 @@ func (c *conn) Close() error {
 	return c.Conn.Close()
 }
 
-func (c *conn) send(f *agentdv1.Frame) error { return writeFrame(c.Conn, f) }
+func (c *conn) send(f *agentdv1.Frame) error { return WriteFrame(c.Conn, f) }
 
 // recv returns the next frame, converting Error frames into *Error.
 func (c *conn) recv(ctx context.Context) (*agentdv1.Frame, error) {
-	f, err := readFrame(c.r)
+	f, err := ReadFrame(c.r)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()

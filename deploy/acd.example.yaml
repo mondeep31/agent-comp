@@ -1,0 +1,59 @@
+# acd configuration. Every key is optional except images; values shown are the
+# defaults. Install as /etc/agent-comp/acd.yaml.
+
+# Keep the API on loopback: public ingress goes through the Cloudflare tunnel.
+listen: 127.0.0.1:8080
+data_dir: /var/lib/agent-comp
+
+firecracker:
+  binary: /usr/local/bin/firecracker
+  jailer_binary: /usr/local/bin/jailer
+  chroot_base: /srv/jailer
+  uid_base: 200000
+  cgroup_parent: agent-comp
+
+images:
+  - name: base
+    kernel: /var/lib/agent-comp/images/vmlinux
+    rootfs: /var/lib/agent-comp/images/base.ext4
+    # boot_args defaults to booting agentd as init.
+
+sandbox:
+  vcpu: 1
+  memory_mib: 256
+  disk_mib: 2048
+  ttl: 1h
+  idle_timeout: 15m
+
+limits:
+  max_sandboxes: 64
+  max_sandboxes_per_key: 16
+  max_snapshots_per_key: 8
+  max_vcpu: 2
+  max_memory_mib: 2048
+  max_disk_mib: 16384
+  max_ttl: 24h
+  max_exec_timeout: 30m
+  max_file_bytes: 67108864
+  requests_per_second: 20
+  request_burst: 40
+  disk_bandwidth_mibps: 200
+  net_bandwidth_mbps: 200
+
+pool:
+  # Paused, pre-restored VMs kept per image at the default shape.
+  size: 4
+  refill_concurrency: 2
+
+network:
+  enabled: true
+  cidr: 10.200.0.0/16
+  # uplink: eth0   # default: the default route's interface
+  nameservers: [8.8.8.8, 1.0.0.1]
+  # deny_cidrs defaults to private, link-local, CGNAT/Tailscale and metadata ranges.
+
+auth:
+  # One "name:sha256hex" line per key. Create keys with:
+  #   acctl keygen -append /etc/agent-comp/api-keys NAME
+  # then reload with: systemctl reload acd (SIGHUP).
+  api_keys_file: /etc/agent-comp/api-keys

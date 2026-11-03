@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -98,5 +99,17 @@ sandbox:
 	}
 	if _, ok := cfg.Image("base"); !ok {
 		t.Error("image base not found")
+	}
+}
+
+func TestExampleConfigMatchesDefaults(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "deploy", "acd.example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Default()
+	want.Images = cfg.Images
+	if !reflect.DeepEqual(cfg, want) {
+		t.Fatalf("example config drifted from Default():\n got %+v\nwant %+v", cfg, want)
 	}
 }
