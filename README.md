@@ -6,6 +6,8 @@ Computers for AI agents, in a snap. Each agent gets its own Firecracker microVM:
 - `acctl`: Go CLI for the API.
 - `agentd`: Rust guest agent (PID 1 in every microVM). Serves exec and file operations over vsock.
 
+Documentation: [agent-comp docs](https://mondeep31.github.io/agent-comp/).
+
 Plan: [`docs/PLAN.md`](docs/PLAN.md). Measured numbers: [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md). Agents working on this repo: read [`AGENTS.md`](AGENTS.md).
 
 ## Development
