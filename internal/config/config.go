@@ -148,7 +148,7 @@ func Default() Config {
 		Network: Network{
 			Enabled:     true,
 			CIDR:        "10.200.0.0/16",
-			Nameservers: []string{"1.1.1.1", "8.8.8.8"},
+			Nameservers: []string{"8.8.8.8", "1.0.0.1"},
 			DenyCIDRs:   DefaultDenyCIDRs(),
 		},
 	}

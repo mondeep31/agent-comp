@@ -88,10 +88,14 @@ pub async fn apply_network(net: &NetworkConfig) -> Result<(), AgentError> {
         .await?;
     }
     if !net.nameservers.is_empty() {
-        let conf = net.nameservers.iter().fold(String::new(), |mut s, ns| {
-            let _ = writeln!(s, "nameserver {ns}");
-            s
-        });
+        // A short timeout keeps one unreachable resolver from stalling lookups.
+        let conf = net.nameservers.iter().fold(
+            String::from("options timeout:2 attempts:2\n"),
+            |mut s, ns| {
+                let _ = writeln!(s, "nameserver {ns}");
+                s
+            },
+        );
         tokio::fs::write("/etc/resolv.conf", conf)
             .await
             .map_err(|e| AgentError::io("writing /etc/resolv.conf", &e))?;

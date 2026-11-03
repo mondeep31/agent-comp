@@ -36,3 +36,15 @@ Takeaways:
 - After restore, agentd's first reply took about 45 ms and each later request about 3-4 ms, while a bare vsock connect took 0.8 ms. `idle=poll` in the guest changed nothing, so the cost is first-touch page faults on file-backed guest memory, which are expensive under nested EPT.
 - The pool therefore prewarms: refills restore a VM running, wait for one agentd reply, then pause it. That moved warm acquires from p50 54 ms to p50 9.7 ms. The rest is mostly the per-request fault cost and should shrink on bare metal.
 - On-demand restores stay under 100 ms one at a time and scale to 6 in parallel at 140 ms wall on 4 vCPUs.
+
+## Networking
+
+Test: `make integration PKG=./internal/network/`. Each VM gets a network namespace, veth pair, tap and nftables rules (see `internal/network`).
+
+| Host tag | Path | Result |
+| --- | --- | --- |
+| dev-nested-comp-agents | On-demand restore with network to agent ready | 145-154 ms |
+
+Namespace setup (two `ip -batch` calls, sysctls, one `nft -f`) adds about 70 ms to an on-demand restore. Warm pool VMs are attached before they are pooled, so warm acquires do not pay it.
+
+The dev host's upstream network drops all traffic to 1.1.1.1, so default resolvers are 8.8.8.8 and 1.0.0.1 and agentd writes `options timeout:2 attempts:2` to resolv.conf.
