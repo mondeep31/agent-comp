@@ -1,0 +1,38 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler musl-tools
+      - run: rustup toolchain install
+        working-directory: guest
+      - run: make build VERSION="$GITHUB_REF_NAME"
+      - name: package
+        run: |
+          dist="agent-comp-$GITHUB_REF_NAME-linux-amd64"
+          mkdir -p "dist/$dist"
+          cp bin/acd bin/acctl bin/agentd "dist/$dist/"
+          cp -r deploy images "dist/$dist/"
+          tar -C dist -czf "dist/$dist.tar.gz" "$dist"
+          cd dist && sha256sum "$dist.tar.gz" > "$dist.tar.gz.sha256"
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes dist/*.tar.gz dist/*.sha256

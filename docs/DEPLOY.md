@@ -107,6 +107,33 @@ acctl create
 or connect an MCP client to `https://computers.example.com/v1/mcp` (see
 [MCP.md](MCP.md)).
 
+## CI
+
+| Workflow | Runs on | Triggers | What |
+| --- | --- | --- | --- |
+| `ci.yml` | GitHub-hosted | push to main, PRs, weekly, manual | `make lint-go test-go build-go`, `lint-rust test-rust build-agentd`, `lint-proto`, `audit` |
+| `integration.yml` | self-hosted `kvm` | push to main (code changes), manual | `make build-agentd integration`; any skipped test fails the job |
+| `release.yml` | GitHub-hosted | `v*` tags | `make build`, tarball with binaries, `deploy/` and `images/`, SHA-256, GitHub release |
+
+The integration job needs real KVM, so it runs on a self-hosted runner on the
+dev host. To register one:
+
+```sh
+gh api -X POST repos/OWNER/REPO/actions/runners/registration-token -q .token \
+  | ssh HOST 'sudo bash agent-comp/scripts/host/install-runner.sh OWNER/REPO'
+```
+
+The script creates an `ac-runner` user with its own Rust toolchain and
+passwordless sudo, installs a checksum-verified runner release as a systemd
+service and labels it `kvm`. The host also needs `/var/lib/agent-comp/ci`
+(`scripts/host/fetch-ci-artifacts.sh`), Firecracker and Go in
+`/usr/local/go`. Jobs on this runner are effectively root on the host, so
+the workflow never runs for pull requests, and the repository should stay
+private or require approval for outside contributors.
+
+Integration tests use their own network instance (`t`), cgroup parents and
+uid ranges, so they run safely next to the production acd.
+
 ## Operations
 
 | Task | Command |

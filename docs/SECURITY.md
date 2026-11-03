@@ -80,7 +80,9 @@ automated test, ⏳ open.
 | The smoke test reads the API key from a file and passes it to curl through a 0600 header file | 🔶 | `scripts/host/smoke-api.sh` |
 | Base image has no SSH host keys, apt lists or machine-id baked in | 🔶 | `images/build-base.sh` |
 | Package manifest recorded per image build | 🔶 | `base.manifest` |
-| Dependency vulnerability and license checks (`make audit`) | ⏳ | wired into CI in the GitHub Actions stage |
+| Dependency vulnerability and license checks (`make audit`) on every push and weekly | ✅ | `.github/workflows/ci.yml` |
+| CI actions pinned by commit SHA, read-only `GITHUB_TOKEN` by default, no persisted checkout credentials, Dependabot for actions, Go and Cargo | 🔶 | `.github/` |
+| The self-hosted KVM runner (root via sudo) only runs commits on main and manual dispatches, never pull requests | 🔶 | `.github/workflows/integration.yml`, `scripts/host/install-runner.sh` |
 
 ## Open items
 
