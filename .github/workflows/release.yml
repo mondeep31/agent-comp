@@ -1,4 +1,18 @@
-# Workflow disabled. Remove the leading "# " from each line to restore it.
+name: release
+
+# Disabled. This file stays valid so GitHub Actions does not fail it on every
+# push. The previous workflow is commented out below. To restore it, delete
+# this stub and remove the leading "# " from each commented line.
+on:
+  workflow_dispatch:
+
+jobs:
+  disabled:
+    if: false
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "release is disabled"
+
 # name: release
 #
 # on:
