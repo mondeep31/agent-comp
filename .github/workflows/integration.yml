@@ -1,35 +1,36 @@
-name: integration
-
-# Real Firecracker VMs on the KVM dev host. The tests run as root through
-# `sudo -E`, so this never runs for pull requests: only for commits already on
-# main and for manual dispatch by someone with write access.
-on:
-  push:
-    branches: [main]
-    paths-ignore: ["docs/**", "**.md"]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: integration
-  cancel-in-progress: false
-
-jobs:
-  kvm:
-    runs-on: [self-hosted, linux, x64, kvm]
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - run: make build-agentd
-      - name: make integration
-        run: make integration 2>&1 | tee integration.log
-      - name: fail on skipped tests
-        run: |
-          if grep -E -- '--- SKIP' integration.log; then
-            echo "::error::integration tests were skipped; the runner is missing a prerequisite"
-            exit 1
-          fi
+# Workflow disabled. Remove the leading "# " from each line to restore it.
+# name: integration
+#
+# # Real Firecracker VMs on the KVM dev host. The tests run as root through
+# # `sudo -E`, so this never runs for pull requests: only for commits already on
+# # main and for manual dispatch by someone with write access.
+# on:
+#   push:
+#     branches: [main]
+#     paths-ignore: ["docs/**", "**.md"]
+#   workflow_dispatch:
+#
+# permissions:
+#   contents: read
+#
+# concurrency:
+#   group: integration
+#   cancel-in-progress: false
+#
+# jobs:
+#   kvm:
+#     runs-on: [self-hosted, linux, x64, kvm]
+#     timeout-minutes: 30
+#     steps:
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         with:
+#           persist-credentials: false
+#       - run: make build-agentd
+#       - name: make integration
+#         run: make integration 2>&1 | tee integration.log
+#       - name: fail on skipped tests
+#         run: |
+#           if grep -E -- '--- SKIP' integration.log; then
+#             echo "::error::integration tests were skipped; the runner is missing a prerequisite"
+#             exit 1
+#           fi

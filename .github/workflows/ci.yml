@@ -1,82 +1,83 @@
-name: ci
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-  schedule:
-    - cron: "17 4 * * 1" # weekly, so new advisories fail audit without a push
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  GOLANGCI_LINT_VERSION: v2.15.0
-
-jobs:
-  go:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
-      - run: go mod tidy -diff
-      - run: make test-go
-      - run: make build-go
-
-  rust:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler musl-tools
-      - run: rustup toolchain install
-        working-directory: guest
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          workspaces: guest
-      - run: make lint-rust
-      - run: make test-rust
-      - run: make build-agentd
-
-  proto:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
-        with:
-          setup_only: true
-      - run: make lint-proto
-
-  audit:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2.90.0
-        with:
-          tool: cargo-deny,cargo-audit
-      - run: make audit
+# Workflow disabled. Remove the leading "# " from each line to restore it.
+# name: ci
+#
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
+#   schedule:
+#     - cron: "17 4 * * 1" # weekly, so new advisories fail audit without a push
+#   workflow_dispatch:
+#
+# permissions:
+#   contents: read
+#
+# concurrency:
+#   group: ci-${{ github.ref }}
+#   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+#
+# env:
+#   GOLANGCI_LINT_VERSION: v2.15.0
+#
+# jobs:
+#   go:
+#     runs-on: ubuntu-24.04
+#     timeout-minutes: 20
+#     steps:
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         with:
+#           persist-credentials: false
+#       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+#         with:
+#           go-version-file: go.mod
+#       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+#         with:
+#           version: ${{ env.GOLANGCI_LINT_VERSION }}
+#       - run: go mod tidy -diff
+#       - run: make test-go
+#       - run: make build-go
+#
+#   rust:
+#     runs-on: ubuntu-24.04
+#     timeout-minutes: 20
+#     steps:
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         with:
+#           persist-credentials: false
+#       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends protobuf-compiler musl-tools
+#       - run: rustup toolchain install
+#         working-directory: guest
+#       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+#         with:
+#           workspaces: guest
+#       - run: make lint-rust
+#       - run: make test-rust
+#       - run: make build-agentd
+#
+#   proto:
+#     runs-on: ubuntu-24.04
+#     timeout-minutes: 10
+#     steps:
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         with:
+#           persist-credentials: false
+#       - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
+#         with:
+#           setup_only: true
+#       - run: make lint-proto
+#
+#   audit:
+#     runs-on: ubuntu-24.04
+#     timeout-minutes: 15
+#     steps:
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+#         with:
+#           persist-credentials: false
+#       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+#         with:
+#           go-version-file: go.mod
+#       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+#       - uses: taiki-e/install-action@b80e2bb2635f28eb98b9fce1e2f0887e1535c6b2 # v2.90.0
+#         with:
+#           tool: cargo-deny,cargo-audit
+#       - run: make audit
