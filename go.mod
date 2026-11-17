@@ -11,7 +11,7 @@ require (
 
 require (
 	github.com/coder/websocket v1.8.15
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	golang.org/x/time v0.16.0
 )
 
