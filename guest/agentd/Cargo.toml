@@ -13,7 +13,7 @@ workspace = true
 [dependencies]
 anyhow = "1"
 bytes = "1"
-nix = { version = "0.30", features = ["fs", "hostname", "process", "signal", "time"] }
+nix = { version = "0.31", features = ["fs", "hostname", "process", "signal", "time"] }
 prost = "0.14"
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt", "sync", "time"] }
