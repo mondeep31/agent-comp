@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	agentdv1 "github.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1"
 	"github.com/mondeep31/agent-comp/internal/golden"
 	"github.com/mondeep31/agent-comp/internal/guest"
 	"github.com/mondeep31/agent-comp/internal/storage"
@@ -254,7 +255,10 @@ func (p *Pool) prewarm(ctx context.Context, key golden.Key) (*Instance, error) {
 	}
 	rctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	err = inst.Guest.WaitReady(rctx)
+	pong, err := inst.Guest.Ready(rctx)
+	if err == nil && pong.GetDisplay() != nil {
+		err = warmDisplay(rctx, inst.Guest)
+	}
 	if err == nil {
 		err = inst.VM.Pause(rctx)
 	}
@@ -264,6 +268,27 @@ func (p *Pool) prewarm(ctx context.Context, key golden.Key) (*Instance, error) {
 	}
 	inst.Warm = true
 	return inst, nil
+}
+
+// warmDisplay faults in the guest memory behind the screen (X server,
+// encoder, input path) so a pooled desktop answers its first screenshot fast.
+// The pointer move is a no-op: it moves to where the pointer already is.
+func warmDisplay(ctx context.Context, g *guest.Client) error {
+	if _, err := g.WaitDisplay(ctx); err != nil {
+		return err
+	}
+	if _, _, err := g.Screenshot(ctx, &agentdv1.Screenshot{Format: agentdv1.ImageFormat_IMAGE_FORMAT_PNG}); err != nil {
+		return fmt.Errorf("warming screenshot: %w", err)
+	}
+	res, err := g.Input(ctx, &agentdv1.Input{})
+	if err != nil {
+		return fmt.Errorf("warming input: %w", err)
+	}
+	move := &agentdv1.InputEvent{Kind: &agentdv1.InputEvent_Move{Move: &agentdv1.PointerMove{X: res.GetCursorX(), Y: res.GetCursorY()}}}
+	if _, err := g.Input(ctx, &agentdv1.Input{Events: []*agentdv1.InputEvent{move}}); err != nil {
+		return fmt.Errorf("warming input: %w", err)
+	}
+	return nil
 }
 
 // restore starts a new, running VM from key's golden snapshot.

@@ -307,8 +307,14 @@ func (m *Manager) build(ctx context.Context, key Key, img Image, dir string) (er
 	}()
 
 	c := guest.ForVM(vm)
-	if err := c.WaitReady(ctx); err != nil {
+	pong, err := c.Ready(ctx)
+	if err != nil {
 		return fmt.Errorf("%w; console:\n%s", err, tail(vm.Console(), 4096))
+	}
+	if pong.GetDisplay() != nil {
+		if err := settleDisplay(ctx, c); err != nil {
+			return fmt.Errorf("%w; console:\n%s", err, tail(vm.Console(), 4096))
+		}
 	}
 	// Flush the page cache so the overlay copy taken at pause is consistent.
 	exit, err := c.Run(ctx, &agentdv1.ExecStart{Argv: []string{"sync"}}, nil, nil, nil)
@@ -325,6 +331,47 @@ func (m *Manager) build(ctx context.Context, key Key, img Image, dir string) (er
 		return err
 	}
 	return storage.CloneFile(vm.OverlayPath(), overlay)
+}
+
+// Display settling: a desktop is snapshotted once two screenshots taken
+// settleInterval apart match, so clones start from a fully painted screen.
+const (
+	settleInterval = 500 * time.Millisecond
+	settleMax      = 20 * time.Second
+)
+
+// settleDisplay waits for the guest's display to be ready and its screen to
+// stop changing. A screen that keeps changing (a blinking cursor, a clock)
+// is snapshotted after settleMax.
+func settleDisplay(ctx context.Context, c *guest.Client) error {
+	if _, err := c.WaitDisplay(ctx); err != nil {
+		return err
+	}
+	shot := func() ([32]byte, error) {
+		_, img, err := c.Screenshot(ctx, &agentdv1.Screenshot{Format: agentdv1.ImageFormat_IMAGE_FORMAT_PNG})
+		return sha256.Sum256(img), err
+	}
+	prev, err := shot()
+	if err != nil {
+		return fmt.Errorf("screenshot: %w", err)
+	}
+	deadline := time.Now().Add(settleMax)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(settleInterval):
+		}
+		cur, err := shot()
+		if err != nil {
+			return fmt.Errorf("screenshot: %w", err)
+		}
+		if cur == prev {
+			return nil
+		}
+		prev = cur
+	}
+	return nil
 }
 
 func randomHex(n int) string {
