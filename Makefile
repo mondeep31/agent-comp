@@ -13,7 +13,7 @@ GUEST_TARGET ?= x86_64-unknown-linux-musl
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GO_LDFLAGS := -s -w -X github.com/mondeep31/agent-comp/internal/version.Version=$(VERSION)
 
-.PHONY: all lint lint-go lint-rust lint-proto fmt test test-go test-rust build build-go build-agentd \
+.PHONY: all lint lint-go lint-rust lint-proto fmt test test-go test-rust test-rust-x11 build build-go build-agentd \
 	proto integration bench audit image sync clean help
 
 all: lint test build ## Lint, test and build everything
@@ -46,6 +46,9 @@ test-go:
 
 test-rust:
 	cd guest && $(CARGO) test --locked
+
+test-rust-x11: ## agentd screenshot and input tests against Xvfb (needs xvfb-run, xdotool, xterm)
+	cd guest && LANG=C.UTF-8 xvfb-run -n 0 -s '-screen 0 1280x800x24' $(CARGO) test --locked --test x11 -- --ignored --test-threads 1
 
 build: build-go build-agentd ## Build acd, acctl and agentd
 
