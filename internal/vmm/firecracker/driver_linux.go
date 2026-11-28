@@ -54,7 +54,11 @@ type Options struct {
 	// CgroupParent is relative to /sys/fs/cgroup.
 	CgroupParent string
 	// MaxVMs bounds concurrently running VMs (one uid per VM).
-	MaxVMs       int
+	MaxVMs int
+	// MemoryMaxMiB and CPUWeight are written to CgroupParent when non-zero,
+	// capping all VMs together so co-hosted services keep their share.
+	MemoryMaxMiB int
+	CPUWeight    int
 	ConsoleBytes int
 	Logger       *slog.Logger
 }
@@ -88,7 +92,7 @@ func New(opts Options) (*Driver, error) {
 	if os.Geteuid() != 0 {
 		return nil, errors.New("firecracker: jailer requires root")
 	}
-	if err := ensureCgroupParent(opts.CgroupParent); err != nil {
+	if err := ensureCgroupParent(opts.CgroupParent, opts.MemoryMaxMiB, opts.CPUWeight); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(opts.ChrootBase, 0o750); err != nil {
@@ -117,7 +121,7 @@ func (d *Driver) cleanupStale() {
 	}
 }
 
-func ensureCgroupParent(parent string) error {
+func ensureCgroupParent(parent string, memoryMaxMiB, cpuWeight int) error {
 	controllers := []byte("+cpu +memory +pids")
 	if err := os.WriteFile(filepath.Join(cgroupRoot, "cgroup.subtree_control"), controllers, 0o600); err != nil {
 		return fmt.Errorf("enabling root cgroup controllers: %w", err)
@@ -128,6 +132,18 @@ func ensureCgroupParent(parent string) error {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "cgroup.subtree_control"), controllers, 0o600); err != nil {
 		return fmt.Errorf("enabling controllers in %s: %w", dir, err)
+	}
+	memMax, weight := "max", "100"
+	if memoryMaxMiB > 0 {
+		memMax = strconv.FormatInt(int64(memoryMaxMiB)<<20, 10)
+	}
+	if cpuWeight > 0 {
+		weight = strconv.Itoa(cpuWeight)
+	}
+	for file, v := range map[string]string{"memory.max": memMax, "cpu.weight": weight} {
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(v), 0o600); err != nil {
+			return fmt.Errorf("setting %s in %s: %w", file, dir, err)
+		}
 	}
 	return nil
 }
