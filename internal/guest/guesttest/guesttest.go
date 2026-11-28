@@ -37,6 +37,7 @@ type Agent struct {
 	files    map[string][]byte
 	hostname string
 	env      map[string]string
+	clockMs  int64
 }
 
 func NewAgent() *Agent {
@@ -47,7 +48,14 @@ func NewAgent() *Agent {
 func (a *Agent) Clone() *Agent {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return &Agent{files: maps.Clone(a.files), hostname: a.hostname, env: maps.Clone(a.env)}
+	return &Agent{files: maps.Clone(a.files), hostname: a.hostname, env: maps.Clone(a.env), clockMs: a.clockMs}
+}
+
+// ClockMs is the wall clock most recently set through Configure.
+func (a *Agent) ClockMs() int64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.clockMs
 }
 
 func (a *Agent) Hostname() string {
@@ -102,6 +110,9 @@ func (a *Agent) Serve(c net.Conn) {
 			a.hostname = k.Configure.GetHostname()
 		}
 		maps.Copy(a.env, k.Configure.GetEnv())
+		if ms := k.Configure.GetWallClockUnixMs(); ms != 0 {
+			a.clockMs = ms
+		}
 		a.mu.Unlock()
 		send(c, &agentdv1.Ack{})
 	case *agentdv1.Frame_Stat:
