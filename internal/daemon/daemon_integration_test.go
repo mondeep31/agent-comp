@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -453,4 +454,56 @@ func atoi(t *testing.T, s string) int64 {
 		t.Fatalf("not a number: %q", s)
 	}
 	return n
+}
+
+// TestDesktopDensity measures warm desktop creates and host memory with
+// several desktops open, under a committed-memory budget like the dev host's.
+func TestDesktopDensity(t *testing.T) {
+	const images = "/var/lib/agent-comp/images"
+	rootfs := os.Getenv("AC_DESKTOP_IMAGE")
+	if rootfs == "" {
+		rootfs = filepath.Join(images, "desktop.ext4")
+	}
+	if _, err := os.Stat(rootfs); err != nil {
+		t.Skipf("%v (run make image-desktop)", err)
+	}
+	const n = 3
+	img := config.Image{
+		Name: "desktop", Kernel: filepath.Join(images, "vmlinux"), Rootfs: rootfs,
+		Display: &config.Display{Width: 1280, Height: 800},
+		Sandbox: &config.Shape{MemoryMiB: 1024},
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
+	defer cancel()
+	c, _, _ := startDaemon(t, ctx, img, n)
+	// Let the pool fill (golden build plus n prewarmed VMs).
+	time.Sleep(45 * time.Second)
+
+	var ids []string
+	for i := range n + 1 {
+		begin := time.Now()
+		sb, err := c.Create(ctx, &api.CreateSandboxRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		created := time.Since(begin)
+		ids = append(ids, sb.ID)
+		begin = time.Now()
+		if _, err := c.Screenshot(ctx, sb.ID, sandbox.ScreenshotOptions{Format: "jpeg"}); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("desktop %d: create %v (warm=%v), first screenshot %v", i, created, sb.Warm, time.Since(begin))
+	}
+	time.Sleep(5 * time.Second)
+	out, err := exec.CommandContext(ctx, "sh", "-c",
+		`for p in $(pgrep -f 'firecracker.*--id'); do awk '/^(Private_Clean|Private_Dirty|Rss):/{a[$1]+=$2} END{printf "%d %d\n", (a["Private_Clean:"]+a["Private_Dirty:"])/1024, a["Rss:"]/1024}' /proc/$p/smaps_rollup; done; free -m | sed -n 2p`).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("per-VM private/rss MiB (sandboxes and refilled pool), then host memory:\n%s", out)
+	for _, id := range ids {
+		if err := c.Delete(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
