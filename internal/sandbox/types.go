@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mondeep31/agent-comp/internal/config"
 	"github.com/mondeep31/agent-comp/internal/golden"
 	"github.com/mondeep31/agent-comp/internal/pool"
 )
@@ -44,6 +45,25 @@ func invalid(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrInvalid, fmt.Sprintf(format, args...))
 }
 
+// ImageSpec is what the manager knows about one configured image.
+type ImageSpec struct {
+	Rootfs string
+	// Shape is the default sandbox shape for the image.
+	Shape golden.Shape
+	// Display is nil for headless images.
+	Display *config.Display
+}
+
+// ImageInfo describes an image to API clients.
+type ImageInfo struct {
+	Name      string          `json:"name"`
+	Default   bool            `json:"default"`
+	VCPU      int             `json:"vcpu"`
+	MemoryMiB int             `json:"memory_mib"`
+	DiskMiB   int             `json:"disk_mib"`
+	Display   *config.Display `json:"display,omitempty"`
+}
+
 // CreateRequest describes a new sandbox. Zero values take config defaults.
 type CreateRequest struct {
 	Owner       string
@@ -65,6 +85,7 @@ type Info struct {
 	Owner        string            `json:"owner"`
 	State        State             `json:"state"`
 	Image        string            `json:"image"`
+	Display      *config.Display   `json:"display,omitempty"`
 	VCPU         int               `json:"vcpu"`
 	MemoryMiB    int               `json:"memory_mib"`
 	DiskMiB      int               `json:"disk_mib"`

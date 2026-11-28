@@ -18,8 +18,27 @@ import (
 	"github.com/mondeep31/agent-comp/internal/vmm/firecracker"
 )
 
-// goldenHeadroom covers golden builds that run alongside a full host.
-const goldenHeadroom = 4
+const (
+	// goldenHeadroom covers golden builds that run alongside a full host.
+	goldenHeadroom = 4
+	// goldenReadyTimeout covers a cold boot plus, for display images, the
+	// desktop session start and a snapshot of a larger memory file.
+	goldenReadyTimeout = 90 * time.Second
+)
+
+// bootArgs is the image's kernel command line, plus ac.display=WxH for images
+// with a screen. golden fingerprints boot args, so changing the display
+// rebuilds the snapshot.
+func bootArgs(img config.Image) string {
+	args := img.BootArgs
+	if args == "" {
+		args = golden.DefaultBootArgs
+	}
+	if d := img.Display; d != nil {
+		args += fmt.Sprintf(" ac.display=%dx%d", d.Width, d.Height)
+	}
+	return args
+}
 
 // New builds and starts every component. Golden snapshots build lazily in the
 // background as the pool fills.
@@ -47,7 +66,9 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (_ *Daemon, e
 		ChrootBase:     fc.ChrootBase,
 		UIDBase:        fc.UIDBase,
 		CgroupParent:   fc.CgroupParent,
-		MaxVMs:         cfg.Limits.MaxSandboxes + cfg.Pool.Size*len(cfg.Images) + goldenHeadroom,
+		MaxVMs:         cfg.Limits.MaxSandboxes + cfg.TotalPoolSize() + goldenHeadroom,
+		MemoryMaxMiB:   fc.CgroupMemoryMaxMiB,
+		CPUWeight:      fc.CgroupCPUWeight,
 		Logger:         log,
 	})
 	if err != nil {
@@ -71,10 +92,14 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (_ *Daemon, e
 	}
 
 	images := make([]golden.Image, 0, len(cfg.Images))
-	rootfs := map[string]string{}
+	specs := map[string]sandbox.ImageSpec{}
+	warm := map[golden.Key]int{}
 	for _, img := range cfg.Images {
-		images = append(images, golden.Image{Name: img.Name, Kernel: img.Kernel, Rootfs: img.Rootfs, BootArgs: img.BootArgs})
-		rootfs[img.Name] = img.Rootfs
+		images = append(images, golden.Image{Name: img.Name, Kernel: img.Kernel, Rootfs: img.Rootfs, BootArgs: bootArgs(img)})
+		s := cfg.ImageShape(img)
+		shape := golden.Shape{VCPU: s.VCPU, MemoryMiB: s.MemoryMiB, DiskMiB: s.DiskMiB}
+		specs[img.Name] = sandbox.ImageSpec{Rootfs: img.Rootfs, Shape: shape, Display: img.Display}
+		warm[golden.Key{Image: img.Name, Shape: shape}] = cfg.ImagePoolSize(img)
 	}
 	snapshots, err := golden.New(golden.Options{
 		Driver:         driver,
@@ -82,19 +107,13 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (_ *Daemon, e
 		Dir:            filepath.Join(cfg.DataDir, "golden"),
 		Images:         images,
 		FirecrackerBin: fc.Binary,
-		ReadyTimeout:   30 * time.Second,
+		ReadyTimeout:   goldenReadyTimeout,
 		Logger:         log,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	s := cfg.Sandbox
-	defaultShape := golden.Shape{VCPU: s.VCPU, MemoryMiB: s.MemoryMiB, DiskMiB: s.DiskMiB}
-	warm := map[golden.Key]int{}
-	for _, img := range cfg.Images {
-		warm[golden.Key{Image: img.Name, Shape: defaultShape}] = cfg.Pool.Size
-	}
 	vms, err := pool.New(pool.Options{
 		Driver:             driver,
 		Snapshots:          snapshots,
@@ -112,7 +131,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (_ *Daemon, e
 
 	d.manager, err = sandbox.New(sandbox.Options{
 		Source:       vms,
-		Images:       rootfs,
+		Images:       specs,
 		DefaultImage: cfg.Images[0].Name,
 		Defaults:     cfg.Sandbox,
 		Limits:       cfg.Limits,
@@ -131,6 +150,6 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger) (_ *Daemon, e
 		vms.Close,
 	}
 	newAPI(d)
-	log.Info("acd ready", "images", len(images), "warm_per_image", cfg.Pool.Size, "network", cfg.Network.Enabled, "keys", keys.Len())
+	log.Info("acd ready", "images", len(images), "warm", cfg.TotalPoolSize(), "network", cfg.Network.Enabled, "keys", keys.Len())
 	return d, nil
 }

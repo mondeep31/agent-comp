@@ -15,6 +15,7 @@ import (
 	"github.com/mondeep31/agent-comp/internal/api"
 	"github.com/mondeep31/agent-comp/internal/client"
 	"github.com/mondeep31/agent-comp/internal/config"
+	"github.com/mondeep31/agent-comp/internal/golden"
 	"github.com/mondeep31/agent-comp/internal/guest/guesttest"
 	"github.com/mondeep31/agent-comp/internal/metrics"
 	"github.com/mondeep31/agent-comp/internal/sandbox"
@@ -50,7 +51,7 @@ func setup(t *testing.T, tweak func(*config.Limits, *api.Options)) *env {
 	}
 	m, err := sandbox.New(sandbox.Options{
 		Source:       guesttest.NewSource(dir),
-		Images:       map[string]string{"base": "/images/base.ext4"},
+		Images:       map[string]sandbox.ImageSpec{"base": {Rootfs: "/images/base.ext4", Shape: golden.Shape{VCPU: cfg.Sandbox.VCPU, MemoryMiB: cfg.Sandbox.MemoryMiB, DiskMiB: cfg.Sandbox.DiskMiB}}},
 		DefaultImage: "base",
 		Defaults:     cfg.Sandbox,
 		Limits:       limits,

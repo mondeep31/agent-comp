@@ -33,11 +33,12 @@ const (
 
 type Options struct {
 	Source VMSource
-	// Images maps each image name to its read-only rootfs.
-	Images       map[string]string
+	// Images maps each image name to its rootfs, shape defaults and display.
+	Images       map[string]ImageSpec
 	DefaultImage string
-	Defaults     config.SandboxDefaults
-	Limits       config.Limits
+	// Defaults supplies TTL and idle timeout; shapes come from each ImageSpec.
+	Defaults config.SandboxDefaults
+	Limits   config.Limits
 	// SnapshotDir holds user snapshots. It is wiped at startup: sandboxes and
 	// snapshots do not survive an acd restart in v1.
 	SnapshotDir string
@@ -85,7 +86,9 @@ type Manager struct {
 	mu        sync.Mutex
 	sandboxes map[string]*sandbox
 	pending   map[string]int
-	closed    bool
+	// pendingMiB is the memory of sandboxes reserved but not yet recorded.
+	pendingMiB int
+	closed     bool
 
 	smu       sync.Mutex
 	snapshots map[string]*userSnapshot
@@ -118,6 +121,20 @@ func New(opts Options) (*Manager, error) {
 
 // Limits exposes the configured limits to adapters.
 func (m *Manager) Limits() config.Limits { return m.opts.Limits }
+
+// Images lists the configured images, sorted by name.
+func (m *Manager) Images() []ImageInfo {
+	out := make([]ImageInfo, 0, len(m.opts.Images))
+	for _, name := range slices.Sorted(maps.Keys(m.opts.Images)) {
+		img := m.opts.Images[name]
+		out = append(out, ImageInfo{
+			Name: name, Default: name == m.opts.DefaultImage,
+			VCPU: img.Shape.VCPU, MemoryMiB: img.Shape.MemoryMiB, DiskMiB: img.Shape.DiskMiB,
+			Display: img.Display,
+		})
+	}
+	return out
+}
 
 func (m *Manager) emit(e Event) {
 	if m.opts.Events != nil {
@@ -178,13 +195,14 @@ func (m *Manager) resolve(req CreateRequest) (plan, error) {
 	if p.image == "" {
 		p.image = m.opts.DefaultImage
 	}
-	if _, ok := m.opts.Images[p.image]; !ok {
+	img, ok := m.opts.Images[p.image]
+	if !ok {
 		return plan{}, invalid("unknown image %q", p.image)
 	}
 	shape := golden.Shape{
-		VCPU:      orDefault(req.VCPU, d.VCPU),
-		MemoryMiB: orDefault(req.MemoryMiB, d.MemoryMiB),
-		DiskMiB:   orDefault(req.DiskMiB, d.DiskMiB),
+		VCPU:      orDefault(req.VCPU, img.Shape.VCPU),
+		MemoryMiB: orDefault(req.MemoryMiB, img.Shape.MemoryMiB),
+		DiskMiB:   orDefault(req.DiskMiB, img.Shape.DiskMiB),
 	}
 	if shape.VCPU < 1 || shape.VCPU > l.MaxVCPU {
 		return plan{}, invalid("vcpu must be in [1, %d]", l.MaxVCPU)
@@ -194,6 +212,9 @@ func (m *Manager) resolve(req CreateRequest) (plan, error) {
 	}
 	if shape.DiskMiB < 64 || shape.DiskMiB > l.MaxDiskMiB {
 		return plan{}, invalid("disk_mib must be in [64, %d]", l.MaxDiskMiB)
+	}
+	if img.Display != nil && shape.MemoryMiB < config.MinDisplayMemoryMiB {
+		return plan{}, invalid("image %q has a display and needs memory_mib >= %d", p.image, config.MinDisplayMemoryMiB)
 	}
 	p.key = golden.Key{Image: p.image, Shape: shape}
 	return p, nil
@@ -208,41 +229,50 @@ func orDefault[T comparable](v, def T) T {
 }
 
 // reserve counts a sandbox against quotas before its VM exists.
-func (m *Manager) reserve(owner string) (func(), error) {
+func (m *Manager) reserve(owner string, memoryMiB int) (func(), error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
 		return nil, ErrClosed
 	}
-	total, mine := 0, m.pending[owner]
+	total, mine, committed := 0, m.pending[owner], m.pendingMiB
 	for _, n := range m.pending {
 		total += n
 	}
 	for _, sb := range m.sandboxes {
 		sb.mu.Lock()
 		live := sb.info.State != StateStopped
+		owned := sb.info.Owner == owner
+		mem := sb.info.MemoryMiB
 		sb.mu.Unlock()
 		if !live {
 			continue
 		}
 		total++
-		if sb.info.Owner == owner {
+		committed += mem
+		if owned {
 			mine++
 		}
 	}
-	if total >= m.opts.Limits.MaxSandboxes {
-		return nil, fmt.Errorf("%w: host is at its limit of %d sandboxes", ErrQuota, m.opts.Limits.MaxSandboxes)
+	l := m.opts.Limits
+	if total >= l.MaxSandboxes {
+		return nil, fmt.Errorf("%w: host is at its limit of %d sandboxes", ErrQuota, l.MaxSandboxes)
 	}
-	if mine >= m.opts.Limits.MaxSandboxesPerKey {
-		return nil, fmt.Errorf("%w: at most %d sandboxes per key", ErrQuota, m.opts.Limits.MaxSandboxesPerKey)
+	if mine >= l.MaxSandboxesPerKey {
+		return nil, fmt.Errorf("%w: at most %d sandboxes per key", ErrQuota, l.MaxSandboxesPerKey)
+	}
+	if l.MaxCommittedMemoryMiB > 0 && committed+memoryMiB > l.MaxCommittedMemoryMiB {
+		return nil, fmt.Errorf("%w: host memory budget of %d MiB is in use", ErrQuota, l.MaxCommittedMemoryMiB)
 	}
 	m.pending[owner]++
+	m.pendingMiB += memoryMiB
 	return func() {
 		m.mu.Lock()
 		m.pending[owner]--
 		if m.pending[owner] == 0 {
 			delete(m.pending, owner)
 		}
+		m.pendingMiB -= memoryMiB
 		m.mu.Unlock()
 	}, nil
 }
@@ -253,7 +283,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	release, err := m.reserve(req.Owner)
+	release, err := m.reserve(req.Owner, p.key.Shape.MemoryMiB)
 	if err != nil {
 		return Info{}, err
 	}
@@ -280,6 +310,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (Info, error) {
 		Owner:        req.Owner,
 		State:        StateRunning,
 		Image:        p.image,
+		Display:      m.opts.Images[p.image].Display,
 		VCPU:         p.key.Shape.VCPU,
 		MemoryMiB:    p.key.Shape.MemoryMiB,
 		DiskMiB:      p.key.Shape.DiskMiB,
@@ -560,7 +591,7 @@ func (m *Manager) Snapshot(ctx context.Context, owner, id string) (SnapshotInfo,
 		return SnapshotInfo{}, fmt.Errorf("snapshot: %w", err)
 	}
 	snap.Key = sb.inst.Key
-	snap.Rootfs = m.opts.Images[snap.Key.Image]
+	snap.Rootfs = m.opts.Images[snap.Key.Image].Rootfs
 
 	us := &userSnapshot{dir: dir, snap: snap, info: SnapshotInfo{
 		ID: snapID, Owner: owner, Sandbox: id, Image: snap.Key.Image,

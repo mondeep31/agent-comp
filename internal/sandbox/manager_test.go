@@ -11,6 +11,7 @@ import (
 
 	agentdv1 "github.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1"
 	"github.com/mondeep31/agent-comp/internal/config"
+	"github.com/mondeep31/agent-comp/internal/golden"
 	"github.com/mondeep31/agent-comp/internal/guest/guesttest"
 	"github.com/mondeep31/agent-comp/internal/sandbox"
 )
@@ -53,7 +54,7 @@ func newFixture(t *testing.T, tweak func(*sandbox.Options)) *fixture {
 	f := &fixture{src: guesttest.NewSource(dir), clock: &clock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}}
 	opts := sandbox.Options{
 		Source:       f.src,
-		Images:       map[string]string{"base": "/images/base.ext4"},
+		Images:       map[string]sandbox.ImageSpec{"base": {Rootfs: "/images/base.ext4", Shape: golden.Shape{VCPU: cfg.Sandbox.VCPU, MemoryMiB: cfg.Sandbox.MemoryMiB, DiskMiB: cfg.Sandbox.DiskMiB}}},
 		DefaultImage: "base",
 		Defaults:     cfg.Sandbox,
 		Limits:       cfg.Limits,
@@ -184,6 +185,70 @@ func TestQuotas(t *testing.T) {
 	}
 	if err := create("carol"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func withDesktop(o *sandbox.Options) {
+	o.Images["desktop"] = sandbox.ImageSpec{
+		Rootfs:  "/images/desktop.ext4",
+		Shape:   golden.Shape{VCPU: 1, MemoryMiB: 1024, DiskMiB: 2048},
+		Display: &config.Display{Width: 1280, Height: 800},
+	}
+}
+
+func TestImageDefaultsAndDisplay(t *testing.T) {
+	f := newFixture(t, withDesktop)
+	info, err := f.m.Create(t.Context(), sandbox.CreateRequest{Owner: "alice", Image: "desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.MemoryMiB != 1024 || info.Display == nil || info.Display.Width != 1280 {
+		t.Fatalf("desktop info = %+v", info)
+	}
+	base, err := f.m.Create(t.Context(), sandbox.CreateRequest{Owner: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if base.MemoryMiB != 256 || base.Display != nil {
+		t.Fatalf("base info = %+v", base)
+	}
+	_, err = f.m.Create(t.Context(), sandbox.CreateRequest{Owner: "alice", Image: "desktop", MemoryMiB: 512})
+	if !errors.Is(err, sandbox.ErrInvalid) {
+		t.Fatalf("small desktop: %v", err)
+	}
+	imgs := f.m.Images()
+	if len(imgs) != 2 || imgs[0].Name != "base" || !imgs[0].Default || imgs[1].Display == nil {
+		t.Fatalf("images = %+v", imgs)
+	}
+}
+
+func TestMemoryBudget(t *testing.T) {
+	f := newFixture(t, func(o *sandbox.Options) {
+		withDesktop(o)
+		o.Limits.MaxCommittedMemoryMiB = 2048 + 256
+	})
+	create := func(image string) (sandbox.Info, error) {
+		return f.m.Create(t.Context(), sandbox.CreateRequest{Owner: "alice", Image: image})
+	}
+	first, err := create("desktop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := create("desktop"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := create("desktop"); !errors.Is(err, sandbox.ErrQuota) {
+		t.Fatalf("over budget: %v", err)
+	}
+	// A small sandbox still fits in what is left.
+	if _, err := create("base"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.m.Delete(t.Context(), "alice", first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := create("desktop"); err != nil {
+		t.Fatalf("after delete: %v", err)
 	}
 }
 
