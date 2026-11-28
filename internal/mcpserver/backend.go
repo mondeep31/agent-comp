@@ -24,6 +24,8 @@ type Backend interface {
 	WriteFile(ctx context.Context, id, path string, mode uint32, r io.Reader) (*sandbox.FileEntry, error)
 	ListDir(ctx context.Context, id, path string) ([]sandbox.FileEntry, error)
 	Snapshot(ctx context.Context, id string) (*sandbox.SnapshotInfo, error)
+	Images(ctx context.Context) ([]sandbox.ImageInfo, error)
+	Computer(ctx context.Context, id string, a *sandbox.ComputerAction) (*sandbox.ComputerResult, error)
 }
 
 // Resolver returns the backend for one tool call.
@@ -77,6 +79,12 @@ func (l *local) ListDir(ctx context.Context, id, path string) ([]sandbox.FileEnt
 func (l *local) Snapshot(ctx context.Context, id string) (*sandbox.SnapshotInfo, error) {
 	info, err := l.m.Snapshot(ctx, l.owner, id)
 	return &info, err
+}
+
+func (l *local) Images(context.Context) ([]sandbox.ImageInfo, error) { return l.m.Images(), nil }
+
+func (l *local) Computer(ctx context.Context, id string, a *sandbox.ComputerAction) (*sandbox.ComputerResult, error) {
+	return l.m.Computer(ctx, l.owner, id, a)
 }
 
 // Remote serves tools through the HTTP API, for stdio clients.

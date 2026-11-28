@@ -1,9 +1,11 @@
 package mcpserver_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	agentdv1 "github.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1"
 	"github.com/mondeep31/agent-comp/internal/api"
 	"github.com/mondeep31/agent-comp/internal/client"
 	"github.com/mondeep31/agent-comp/internal/config"
@@ -33,9 +36,17 @@ func newAPI(t *testing.T) *httptest.Server {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := config.Default()
+	src := guesttest.NewSource(dir)
+	src.Displays = map[string]*agentdv1.Display{"desktop": {Width: 1280, Height: 800, Ready: true}}
 	m, err := sandbox.New(sandbox.Options{
-		Source:       guesttest.NewSource(dir),
-		Images:       map[string]sandbox.ImageSpec{"base": {Rootfs: "/images/base.ext4", Shape: golden.Shape{VCPU: cfg.Sandbox.VCPU, MemoryMiB: cfg.Sandbox.MemoryMiB, DiskMiB: cfg.Sandbox.DiskMiB}}},
+		Source: src,
+		Images: map[string]sandbox.ImageSpec{
+			"base": {Rootfs: "/images/base.ext4", Shape: golden.Shape{VCPU: cfg.Sandbox.VCPU, MemoryMiB: cfg.Sandbox.MemoryMiB, DiskMiB: cfg.Sandbox.DiskMiB}},
+			"desktop": {
+				Rootfs: "/images/desktop.ext4", Shape: golden.Shape{VCPU: 1, MemoryMiB: 1024, DiskMiB: 2048},
+				Display: &config.Display{Width: 1280, Height: 800},
+			},
+		},
 		DefaultImage: "base",
 		Defaults:     cfg.Sandbox,
 		Limits:       cfg.Limits,
@@ -133,7 +144,10 @@ func TestToolsOverHTTP(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	slices.Sort(names)
-	want := []string{"create_computer", "destroy_computer", "list_computers", "list_files", "read_file", "run_command", "snapshot_computer", "write_file"}
+	want := []string{
+		"computer_action", "create_computer", "destroy_computer", "list_computers", "list_files",
+		"list_images", "read_file", "run_command", "snapshot_computer", "write_file",
+	}
 	if !slices.Equal(names, want) {
 		t.Fatalf("tools = %v", names)
 	}
@@ -219,6 +233,77 @@ func TestToolsOverHTTP(t *testing.T) {
 		if res := call(t, cs, "destroy_computer", map[string]any{"computer_id": c}, nil); res.IsError {
 			t.Fatalf("destroy: %s", textOf(res))
 		}
+	}
+}
+
+func imagesOf(res *mcp.CallToolResult) []*mcp.ImageContent {
+	var out []*mcp.ImageContent
+	for _, c := range res.Content {
+		if ic, ok := c.(*mcp.ImageContent); ok {
+			out = append(out, ic)
+		}
+	}
+	return out
+}
+
+func TestComputerActionTool(t *testing.T) {
+	srv := newAPI(t)
+	cs, err := connectHTTP(t, srv, "ac_alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := call(t, cs, "list_images", nil, nil)
+	if !strings.Contains(textOf(res), "desktop: 1 vCPU, 1024 MiB, 1280x800 screen") {
+		t.Fatalf("list_images = %s", textOf(res))
+	}
+
+	var info sandbox.Info
+	res = call(t, cs, "create_computer", map[string]any{"image": "desktop"}, &info)
+	if res.IsError || !strings.Contains(textOf(res), "1280x800 screen") {
+		t.Fatalf("create = %s", textOf(res))
+	}
+
+	res = call(t, cs, "computer_action", map[string]any{"computer_id": info.ID, "action": "screenshot"}, nil)
+	imgs := imagesOf(res)
+	if res.IsError || len(imgs) != 1 || imgs[0].MIMEType != "image/png" {
+		t.Fatalf("screenshot = %s, %d images", textOf(res), len(imgs))
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(imgs[0].Data))
+	if err != nil || cfg.Width != 1280 {
+		t.Fatalf("decoded %+v, %v", cfg, err)
+	}
+
+	var out struct{ CursorX, CursorY int }
+	res = call(t, cs, "computer_action", map[string]any{"computer_id": info.ID, "action": "left_click", "coordinate": []int{100, 200}}, &out)
+	if res.IsError || len(imagesOf(res)) != 1 || !strings.Contains(textOf(res), "X=100, Y=200") {
+		t.Fatalf("click = %s", textOf(res))
+	}
+	res = call(t, cs, "computer_action", map[string]any{"computer_id": info.ID, "action": "cursor_position"}, nil)
+	if res.IsError || len(imagesOf(res)) != 0 || !strings.Contains(textOf(res), "X=100, Y=200") {
+		t.Fatalf("cursor_position = %s", textOf(res))
+	}
+	res = call(t, cs, "computer_action", map[string]any{"computer_id": info.ID, "action": "type", "text": "hi", "screenshot": false}, nil)
+	if res.IsError || len(imagesOf(res)) != 0 {
+		t.Fatalf("type without screenshot = %s", textOf(res))
+	}
+
+	res = call(t, cs, "computer_action", map[string]any{"computer_id": info.ID, "action": "teleport"}, nil)
+	if !res.IsError || !strings.Contains(textOf(res), "unknown action") {
+		t.Fatalf("bad action = %s", textOf(res))
+	}
+	bob, err := connectHTTP(t, srv, "ac_bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res = call(t, bob, "computer_action", map[string]any{"computer_id": info.ID, "action": "screenshot"}, nil)
+	if !res.IsError || !strings.Contains(textOf(res), "not found") {
+		t.Fatalf("bob saw alice's screen: %s", textOf(res))
+	}
+	var base sandbox.Info
+	call(t, cs, "create_computer", nil, &base)
+	res = call(t, cs, "computer_action", map[string]any{"computer_id": base.ID, "action": "screenshot"}, nil)
+	if !res.IsError || !strings.Contains(textOf(res), "no display") {
+		t.Fatalf("headless = %s", textOf(res))
 	}
 }
 

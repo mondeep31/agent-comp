@@ -33,7 +33,8 @@ const instructions = `Each computer is an isolated Linux microVM with a shell, i
 Create one with create_computer, then use run_command, read_file, write_file and list_files with its computer_id.
 Computers pause when idle and resume automatically on the next call; they are destroyed when their TTL expires.
 Use snapshot_computer to save a computer's full state and create_computer with from_snapshot to fork it.
-Call destroy_computer when you are done.`
+Call destroy_computer when you are done.
+Images with a display (see list_images, e.g. "desktop") also have a screen with a browser: drive it with computer_action (screenshot, left_click, type, key, scroll, ...). Coordinates are screen pixels from the top left.`
 
 // New builds an MCP server whose tools act through resolve.
 func New(resolve Resolver, version string, log *slog.Logger) *mcp.Server {
@@ -107,7 +108,7 @@ func handler[In, Out any](t *tools, f func(ctx context.Context, req *mcp.CallToo
 }
 
 type CreateInput struct {
-	Image              string            `json:"image,omitempty" jsonschema:"image name; omit for the default image"`
+	Image              string            `json:"image,omitempty" jsonschema:"image name (see list_images; e.g. desktop for a computer with a screen and browser); omit for the default image"`
 	VCPU               int               `json:"vcpu,omitempty" jsonschema:"number of vCPUs; omit for the default"`
 	MemoryMiB          int               `json:"memory_mib,omitempty" jsonschema:"memory in MiB; omit for the default"`
 	TTLMinutes         int               `json:"ttl_minutes,omitempty" jsonschema:"minutes until the computer is destroyed; omit for the default"`
@@ -142,6 +143,28 @@ type WriteInput struct {
 	Mode       string `json:"mode,omitempty" jsonschema:"octal permissions such as 0755; default 0644"`
 }
 
+type ComputerActionInput struct {
+	ComputerID      string  `json:"computer_id" jsonschema:"id of a computer created from an image with a display"`
+	Action          string  `json:"action" jsonschema:"one of: screenshot, zoom, cursor_position, mouse_move, left_click, right_click, middle_click, double_click, triple_click, left_click_drag, left_mouse_down, left_mouse_up, scroll, type, key, hold_key, wait"`
+	Coordinate      []int   `json:"coordinate,omitempty" jsonschema:"[x, y] in screen pixels: target of clicks, mouse_move, scroll, and the end of left_click_drag"`
+	StartCoordinate []int   `json:"start_coordinate,omitempty" jsonschema:"[x, y] where left_click_drag starts"`
+	Text            string  `json:"text,omitempty" jsonschema:"text for type; key or chord for key and hold_key (e.g. Return, ctrl+l, ctrl+shift+Tab); modifiers held during a click or scroll"`
+	ScrollDirection string  `json:"scroll_direction,omitempty" jsonschema:"up, down, left or right"`
+	ScrollAmount    int     `json:"scroll_amount,omitempty" jsonschema:"wheel clicks to scroll (default 3)"`
+	Duration        float64 `json:"duration,omitempty" jsonschema:"seconds, for wait and hold_key"`
+	Region          []int   `json:"region,omitempty" jsonschema:"[x0, y0, x1, y1] to capture at full resolution, for zoom"`
+	Screenshot      *bool   `json:"screenshot,omitempty" jsonschema:"return a screenshot after the action; default true except for cursor_position and wait"`
+}
+
+type ComputerActionOutput struct {
+	CursorX int `json:"cursor_x"`
+	CursorY int `json:"cursor_y"`
+}
+
+type ImagesOutput struct {
+	Images []sandbox.ImageInfo `json:"images"`
+}
+
 type ListOutput struct {
 	Computers []sandbox.Info `json:"computers"`
 }
@@ -169,6 +192,20 @@ func (t *tools) register(s *mcp.Server) {
 		Description: "Start a new isolated Linux computer (Firecracker microVM) and return its id. Usually ready in well under a second.",
 		Annotations: &mcp.ToolAnnotations{OpenWorldHint: boolPtr(false)},
 	}, handler(t, t.create))
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "list_images",
+		Title:       "List images",
+		Description: "List the images computers can be created from, with default sizes and which ones have a screen.",
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPtr(false)},
+	}, handler(t, t.images))
+	mcp.AddTool(s, &mcp.Tool{
+		Name:  "computer_action",
+		Title: "Use the screen",
+		Description: "Look at and operate a computer's screen, keyboard and mouse. Works on computers from an image with a display " +
+			"(e.g. create_computer image=\"desktop\"), which boot into a browser. Most actions return a screenshot afterwards. " +
+			"Take a screenshot first to see the screen; coordinates are pixels from the top left.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: boolPtr(true), OpenWorldHint: boolPtr(true)},
+	}, handler(t, t.computer))
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_computers",
 		Title:       "List computers",
@@ -224,9 +261,56 @@ func (t *tools) create(ctx context.Context, _ *mcp.CallToolRequest, b Backend, i
 		return nil, nil, err
 	}
 	return &mcp.CallToolResult{Content: text(
-		"Created computer %s (image %s, %d vCPU, %d MiB) in %d ms. It expires at %s. Pass computer_id %q to the other tools.",
-		info.ID, info.Image, info.VCPU, info.MemoryMiB, info.StartupMs, info.ExpiresAt.Format(time.RFC3339), info.ID,
+		"Created computer %s (image %s, %d vCPU, %d MiB%s) in %d ms. It expires at %s. Pass computer_id %q to the other tools.",
+		info.ID, info.Image, info.VCPU, info.MemoryMiB, screenNote(info), info.StartupMs, info.ExpiresAt.Format(time.RFC3339), info.ID,
 	)}, info, nil
+}
+
+func (t *tools) images(ctx context.Context, _ *mcp.CallToolRequest, b Backend, _ struct{}) (*mcp.CallToolResult, ImagesOutput, error) {
+	imgs, err := b.Images(ctx)
+	if err != nil {
+		return nil, ImagesOutput{}, err
+	}
+	var sb strings.Builder
+	for _, img := range imgs {
+		fmt.Fprintf(&sb, "%s: %d vCPU, %d MiB", img.Name, img.VCPU, img.MemoryMiB)
+		if img.Display != nil {
+			fmt.Fprintf(&sb, ", %dx%d screen", img.Display.Width, img.Display.Height)
+		}
+		if img.Default {
+			sb.WriteString(" (default)")
+		}
+		sb.WriteByte('\n')
+	}
+	return &mcp.CallToolResult{Content: text("%s", sb.String())}, ImagesOutput{Images: imgs}, nil
+}
+
+func (t *tools) computer(ctx context.Context, _ *mcp.CallToolRequest, b Backend, in ComputerActionInput) (*mcp.CallToolResult, ComputerActionOutput, error) {
+	shot := in.Action != sandbox.ActionCursorPosition && in.Action != sandbox.ActionWait
+	if in.Screenshot != nil {
+		shot = *in.Screenshot
+	}
+	res, err := b.Computer(ctx, in.ComputerID, &sandbox.ComputerAction{
+		Action: in.Action, Coordinate: in.Coordinate, StartCoordinate: in.StartCoordinate,
+		Text: in.Text, ScrollDirection: in.ScrollDirection, ScrollAmount: in.ScrollAmount,
+		Duration: in.Duration, Region: in.Region, Screenshot: shot,
+	})
+	if err != nil {
+		return nil, ComputerActionOutput{}, err
+	}
+	out := ComputerActionOutput{CursorX: res.CursorX, CursorY: res.CursorY}
+	content := text("Cursor at X=%d, Y=%d.", res.CursorX, res.CursorY)
+	if res.Image != nil {
+		content = append(content, &mcp.ImageContent{Data: res.Image.Data, MIMEType: res.Image.MIMEType})
+	}
+	return &mcp.CallToolResult{Content: content}, out, nil
+}
+
+func screenNote(info *sandbox.Info) string {
+	if info.Display == nil {
+		return ""
+	}
+	return fmt.Sprintf(", %dx%d screen: use computer_action", info.Display.Width, info.Display.Height)
 }
 
 func (t *tools) list(ctx context.Context, _ *mcp.CallToolRequest, b Backend, _ struct{}) (*mcp.CallToolResult, ListOutput, error) {
