@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	agentdv1 "github.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1"
+
 	"github.com/mondeep31/agent-comp/internal/golden"
 	"github.com/mondeep31/agent-comp/internal/pool"
 	"github.com/mondeep31/agent-comp/internal/vmm"
@@ -24,6 +26,8 @@ type Source struct {
 	mu     sync.Mutex
 	vms    []*VM
 	states map[string]*Agent
+	// Displays gives VMs of the named images a screen.
+	Displays map[string]*agentdv1.Display
 }
 
 func NewSource(dir string) *Source {
@@ -53,7 +57,11 @@ func (s *Source) newVM(key golden.Key, agent *Agent) (*pool.Instance, error) {
 }
 
 func (s *Source) Acquire(_ context.Context, key golden.Key) (*pool.Instance, error) {
-	return s.newVM(key, NewAgent())
+	a := NewAgent()
+	s.mu.Lock()
+	a.Display = s.Displays[key.Image]
+	s.mu.Unlock()
+	return s.newVM(key, a)
 }
 
 func (s *Source) Restore(_ context.Context, snap *golden.Snapshot) (*pool.Instance, error) {

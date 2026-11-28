@@ -4,9 +4,13 @@ package guesttest
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"maps"
 	"net"
 	"path"
@@ -15,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"google.golang.org/protobuf/proto"
 
 	agentdv1 "github.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1"
 	"github.com/mondeep31/agent-comp/internal/guest"
@@ -38,6 +44,11 @@ type Agent struct {
 	hostname string
 	env      map[string]string
 	clockMs  int64
+	// Display makes the agent report a screen and serve Screenshot and Input.
+	Display *agentdv1.Display
+	cursorX int32
+	cursorY int32
+	inputs  []*agentdv1.InputEvent
 }
 
 func NewAgent() *Agent {
@@ -48,7 +59,25 @@ func NewAgent() *Agent {
 func (a *Agent) Clone() *Agent {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return &Agent{files: maps.Clone(a.files), hostname: a.hostname, env: maps.Clone(a.env), clockMs: a.clockMs}
+	c := &Agent{files: maps.Clone(a.files), hostname: a.hostname, env: maps.Clone(a.env), clockMs: a.clockMs}
+	if a.Display != nil {
+		c.Display = proto.Clone(a.Display).(*agentdv1.Display) //nolint:errcheck,forcetypeassert // same type
+	}
+	return c
+}
+
+// SetDisplay changes the reported screen; nil makes the guest headless.
+func (a *Agent) SetDisplay(d *agentdv1.Display) {
+	a.mu.Lock()
+	a.Display = d
+	a.mu.Unlock()
+}
+
+// Inputs returns every input event received so far.
+func (a *Agent) Inputs() []*agentdv1.InputEvent {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]*agentdv1.InputEvent(nil), a.inputs...)
 }
 
 // ClockMs is the wall clock most recently set through Configure.
@@ -83,6 +112,10 @@ func send(c net.Conn, kind any) {
 		f.Kind = &agentdv1.Frame_ExecExit{ExecExit: k}
 	case *agentdv1.Error:
 		f.Kind = &agentdv1.Frame_Error{Error: k}
+	case *agentdv1.ScreenshotInfo:
+		f.Kind = &agentdv1.Frame_ScreenshotInfo{ScreenshotInfo: k}
+	case *agentdv1.InputResult:
+		f.Kind = &agentdv1.Frame_InputResult{InputResult: k}
 	default:
 		panic(fmt.Sprintf("guesttest: unsupported frame %T", kind))
 	}
@@ -103,7 +136,14 @@ func (a *Agent) Serve(c net.Conn) {
 	}
 	switch k := f.GetKind().(type) {
 	case *agentdv1.Frame_Ping:
-		send(c, &agentdv1.Pong{AgentVersion: "fake"})
+		a.mu.Lock()
+		d := a.Display
+		a.mu.Unlock()
+		send(c, &agentdv1.Pong{AgentVersion: "fake", Display: d})
+	case *agentdv1.Frame_Screenshot:
+		a.screenshot(c, k.Screenshot)
+	case *agentdv1.Frame_Input:
+		a.input(c, k.Input)
 	case *agentdv1.Frame_Configure:
 		a.mu.Lock()
 		if k.Configure.GetHostname() != "" {
@@ -128,6 +168,48 @@ func (a *Agent) Serve(c net.Conn) {
 	default:
 		fail(c, agentdv1.ErrorCode_ERROR_CODE_INVALID_ARGUMENT, "unexpected %T", k)
 	}
+}
+
+func (a *Agent) screenshot(c net.Conn, req *agentdv1.Screenshot) {
+	a.mu.Lock()
+	d := a.Display
+	a.mu.Unlock()
+	if d == nil {
+		fail(c, agentdv1.ErrorCode_ERROR_CODE_UNAVAILABLE, "this sandbox has no display")
+		return
+	}
+	w, h := int(d.GetWidth()), int(d.GetHeight())
+	if r := req.GetRegion(); r != nil {
+		w, h = int(r.GetWidth()), int(r.GetHeight())
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	var buf bytes.Buffer
+	format := agentdv1.ImageFormat_IMAGE_FORMAT_PNG
+	if req.GetFormat() == agentdv1.ImageFormat_IMAGE_FORMAT_JPEG {
+		format = req.GetFormat()
+		_ = jpeg.Encode(&buf, img, nil)
+	} else {
+		_ = png.Encode(&buf, img)
+	}
+	send(c, &agentdv1.ScreenshotInfo{Width: uint32(w), Height: uint32(h), Format: format, Size: uint64(buf.Len())}) //nolint:gosec // test sizes
+	send(c, &agentdv1.FileData{Data: buf.Bytes()})
+	send(c, &agentdv1.FileData{Eof: true})
+}
+
+func (a *Agent) input(c net.Conn, req *agentdv1.Input) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.Display == nil {
+		fail(c, agentdv1.ErrorCode_ERROR_CODE_UNAVAILABLE, "this sandbox has no display")
+		return
+	}
+	for _, ev := range req.GetEvents() {
+		if m := ev.GetMove(); m != nil {
+			a.cursorX, a.cursorY = m.GetX(), m.GetY()
+		}
+		a.inputs = append(a.inputs, ev)
+	}
+	send(c, &agentdv1.InputResult{CursorX: a.cursorX, CursorY: a.cursorY})
 }
 
 func (a *Agent) info(p string) (*agentdv1.FileInfo, bool) {

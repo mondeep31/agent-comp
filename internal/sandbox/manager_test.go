@@ -188,6 +188,83 @@ func TestQuotas(t *testing.T) {
 	}
 }
 
+func newDesktopFixture(t *testing.T) *fixture {
+	t.Helper()
+	f := newFixture(t, withDesktop)
+	f.src.Displays = map[string]*agentdv1.Display{"desktop": {Width: 1280, Height: 800, Ready: true}}
+	return f
+}
+
+func TestScreenshotAndComputer(t *testing.T) {
+	f := newDesktopFixture(t)
+	ctx := t.Context()
+	desk, err := f.m.Create(ctx, sandbox.CreateRequest{Owner: "alice", Image: "desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := f.m.Screenshot(ctx, "alice", desk.ID, sandbox.ScreenshotOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if img.MIMEType != "image/png" || img.Width != 1280 || img.Height != 800 || len(img.Data) == 0 {
+		t.Fatalf("image = %s %dx%d %d bytes", img.MIMEType, img.Width, img.Height, len(img.Data))
+	}
+	jpg, err := f.m.Screenshot(ctx, "alice", desk.ID, sandbox.ScreenshotOptions{Format: "jpeg", Region: []int{0, 0, 100, 50}})
+	if err != nil || jpg.MIMEType != "image/jpeg" || jpg.Width != 100 {
+		t.Fatalf("jpeg = %+v, %v", jpg, err)
+	}
+
+	res, err := f.m.Computer(ctx, "alice", desk.ID, &sandbox.ComputerAction{Action: "left_click", Coordinate: []int{640, 400}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.CursorX != 640 || res.CursorY != 400 || res.Image != nil {
+		t.Fatalf("click = %+v", res)
+	}
+	res, err = f.m.Computer(ctx, "alice", desk.ID, &sandbox.ComputerAction{Action: "type", Text: "hi", Screenshot: true})
+	if err != nil || res.Image == nil {
+		t.Fatalf("type with screenshot = %+v, %v", res, err)
+	}
+	zoom, err := f.m.Computer(ctx, "alice", desk.ID, &sandbox.ComputerAction{Action: "zoom", Region: []int{10, 10, 210, 110}})
+	if err != nil || zoom.Image == nil || zoom.Image.Width != 200 {
+		t.Fatalf("zoom = %+v, %v", zoom, err)
+	}
+	if n := len(f.src.VMs()[0].Agent.Inputs()); n != 3 {
+		t.Fatalf("guest saw %d events, want 3 (move, click, text)", n)
+	}
+
+	// Bad input never reaches the guest.
+	if _, err := f.m.Computer(ctx, "alice", desk.ID, &sandbox.ComputerAction{Action: "left_click", Coordinate: []int{5000, 0}}); !errors.Is(err, sandbox.ErrInvalid) {
+		t.Fatalf("off-screen click: %v", err)
+	}
+	// Other owners cannot see the screen.
+	if _, err := f.m.Screenshot(ctx, "bob", desk.ID, sandbox.ScreenshotOptions{}); !errors.Is(err, sandbox.ErrNotFound) {
+		t.Fatalf("bob: %v", err)
+	}
+	// Headless sandboxes have no screen.
+	base, err := f.m.Create(ctx, sandbox.CreateRequest{Owner: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.m.Screenshot(ctx, "alice", base.ID, sandbox.ScreenshotOptions{}); !errors.Is(err, sandbox.ErrInvalid) {
+		t.Fatalf("headless: %v", err)
+	}
+}
+
+func TestDisplayNotReadyIsUnavailable(t *testing.T) {
+	f := newDesktopFixture(t)
+	desk, err := f.m.Create(t.Context(), sandbox.CreateRequest{Owner: "alice", Image: "desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The guest lost its display (e.g. the X server crashed).
+	f.src.VMs()[0].Agent.SetDisplay(nil)
+	_, err = f.m.Screenshot(t.Context(), "alice", desk.ID, sandbox.ScreenshotOptions{})
+	if !errors.Is(err, sandbox.ErrUnavailable) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func withDesktop(o *sandbox.Options) {
 	o.Images["desktop"] = sandbox.ImageSpec{
 		Rootfs:  "/images/desktop.ext4",
