@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image/png"
 	"log/slog"
 	"net"
 	"net/http"
@@ -268,4 +269,188 @@ echo "disk: $(df -h / | tail -1)"
 	if err := c.Delete(ctx, sb.ID); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestDesktopImage boots the image built by `make image-desktop` behind the
+// full acd stack and drives its screen: Chromium on a page, a click, typed
+// Unicode text, keys, a screenshot of the result, pause and resume, and a
+// fork from a snapshot. AC_DESKTOP_IMAGE overrides the rootfs path.
+func TestDesktopImage(t *testing.T) {
+	const images = "/var/lib/agent-comp/images"
+	rootfs := os.Getenv("AC_DESKTOP_IMAGE")
+	if rootfs == "" {
+		rootfs = filepath.Join(images, "desktop.ext4")
+	}
+	img := config.Image{
+		Name: "desktop", Kernel: filepath.Join(images, "vmlinux"), Rootfs: rootfs,
+		Display: &config.Display{Width: 1280, Height: 800},
+		Sandbox: &config.Shape{MemoryMiB: 1024},
+	}
+	for _, f := range []string{img.Kernel, img.Rootfs} {
+		if _, err := os.Stat(f); err != nil {
+			t.Skipf("%v (run make image-desktop)", err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Minute)
+	defer cancel()
+	c, _, _ := startDaemon(t, ctx, img, 1)
+
+	start := time.Now()
+	sb, err := c.Create(ctx, &api.CreateSandboxRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("first create (includes golden build): %v", time.Since(start))
+	if sb.Display == nil || sb.Display.Width != 1280 {
+		t.Fatalf("sandbox has no display: %+v", sb)
+	}
+
+	shot := func(opts sandbox.ScreenshotOptions) *sandbox.Image {
+		t.Helper()
+		begin := time.Now()
+		img, err := c.Screenshot(ctx, sb.ID, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("screenshot %s %dx%d %d bytes in %v", img.MIMEType, img.Width, img.Height, len(img.Data), time.Since(begin))
+		return img
+	}
+	first := shot(sandbox.ScreenshotOptions{})
+	cfg, err := png.DecodeConfig(bytes.NewReader(first.Data))
+	if err != nil || cfg.Width != 1280 || cfg.Height != 800 {
+		t.Fatalf("png: %+v %v", cfg, err)
+	}
+	for range 3 {
+		shot(sandbox.ScreenshotOptions{Format: "jpeg"})
+	}
+
+	run := func(cmd string) string {
+		t.Helper()
+		res, err := c.Exec(ctx, sb.ID, &sandbox.ExecRequest{Command: cmd, TimeoutSeconds: 30})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.ExitCode != 0 {
+			t.Fatalf("%s: exit %d\n%s%s", cmd, res.ExitCode, res.Stdout, res.Stderr)
+		}
+		return strings.TrimSpace(res.Stdout)
+	}
+	// Chromium runs as the agent user and opens URLs in the running browser.
+	if who := run("ps -o user= -C chromium | sort -u | head -1"); who != "agent" {
+		t.Fatalf("chromium runs as %q", who)
+	}
+	// The page mirrors its input into the window title, which xdotool reads.
+	page := `<title>ready</title><input id=q autofocus style="font-size:28px;margin:40px;width:600px" oninput="document.title='T:'+this.value">`
+	if _, err := c.WriteFile(ctx, sb.ID, "/tmp/page.html", 0o644, strings.NewReader(page)); err != nil {
+		t.Fatal(err)
+	}
+	run(`runuser -u agent -- env DISPLAY=:0 HOME=/home/agent chromium file:///tmp/page.html >/dev/null 2>&1`)
+	title := func() string {
+		return run("xdotool getactivewindow getwindowname 2>/dev/null || true")
+	}
+	waitTitle := func(prefix string) string {
+		t.Helper()
+		var got string
+		for range 100 {
+			if got = title(); strings.HasPrefix(got, prefix) {
+				return got
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if dir := os.Getenv("AC_SCREENSHOT_DIR"); dir != "" {
+			if img, err := c.Screenshot(ctx, sb.ID, sandbox.ScreenshotOptions{}); err == nil {
+				_ = os.WriteFile(filepath.Join(dir, "desktop-fail.png"), img.Data, 0o644) //nolint:gosec // test artifact
+			}
+			t.Logf("windows:\n%s", run("xdotool search --onlyvisible --name . getwindowname %@ 2>&1; xdotool getwindowfocus getwindowname 2>&1; tail -5 /var/log/agent-comp/session.log"))
+		}
+		t.Fatalf("window title %q, want prefix %q", got, prefix)
+		return ""
+	}
+	waitTitle("ready")
+
+	act := func(a sandbox.ComputerAction) *sandbox.ComputerResult {
+		t.Helper()
+		begin := time.Now()
+		res, err := c.Computer(ctx, sb.ID, &a)
+		if err != nil {
+			t.Fatalf("%s: %v", a.Action, err)
+		}
+		t.Logf("%s in %v", a.Action, time.Since(begin))
+		return res
+	}
+	// The input box sits at y 135-172 under Chromium's 87 px of toolbars.
+	act(sandbox.ComputerAction{Action: "left_click", Coordinate: []int{300, 153}})
+	act(sandbox.ComputerAction{Action: "type", Text: "hello wörld €"})
+	if got := waitTitle("T:"); !strings.HasPrefix(got, "T:hello wörld €") {
+		t.Fatalf("title = %q", got)
+	}
+	act(sandbox.ComputerAction{Action: "key", Text: "ctrl+a"})
+	act(sandbox.ComputerAction{Action: "type", Text: "Zz"})
+	if got := waitTitle("T:Zz"); !strings.HasPrefix(got, "T:Zz ") {
+		t.Fatalf("title after ctrl+a and typing = %q", got)
+	}
+	res := act(sandbox.ComputerAction{Action: "mouse_move", Coordinate: []int{640, 400}, Screenshot: true})
+	if res.CursorX != 640 || res.CursorY != 400 || res.Image == nil {
+		t.Fatalf("mouse_move = %+v", res)
+	}
+	res = act(sandbox.ComputerAction{Action: "cursor_position"})
+	if res.CursorX != 640 || res.CursorY != 400 {
+		t.Fatalf("cursor = %+v", res)
+	}
+	zoom := act(sandbox.ComputerAction{Action: "zoom", Region: []int{0, 0, 640, 400}})
+	if zoom.Image == nil || zoom.Image.Width != 640 {
+		t.Fatalf("zoom = %+v", zoom)
+	}
+	act(sandbox.ComputerAction{Action: "scroll", Coordinate: []int{640, 400}, ScrollDirection: "down", ScrollAmount: 3})
+
+	// After a pause the screen and the clock come back.
+	if _, err := c.Pause(ctx, sb.ID); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(2 * time.Second)
+	begin := time.Now()
+	shot(sandbox.ScreenshotOptions{Format: "jpeg"})
+	t.Logf("screenshot after pause (auto-resume): %v", time.Since(begin))
+	skew := run("echo $(( $(date +%s) ))")
+	if d := time.Since(time.Unix(atoi(t, skew), 0)); d < -2*time.Second || d > 2*time.Second {
+		t.Fatalf("guest clock off by %v after resume", d)
+	}
+
+	// A fork keeps the open browser window.
+	snap, err := c.Snapshot(ctx, sb.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	begin = time.Now()
+	fork, err := c.Create(ctx, &api.CreateSandboxRequest{FromSnapshot: snap.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("fork from snapshot: %v", time.Since(begin))
+	if _, err := c.Screenshot(ctx, fork.ID, sandbox.ScreenshotOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := c.Exec(ctx, fork.ID, &sandbox.ExecRequest{Command: "xdotool search --onlyvisible --class chromium | head -1"})
+	if err != nil || strings.TrimSpace(out.Stdout) == "" {
+		t.Fatalf("fork lost the browser window: %+v %v", out, err)
+	}
+
+	if dir := os.Getenv("AC_SCREENSHOT_DIR"); dir != "" {
+		last := shot(sandbox.ScreenshotOptions{})
+		_ = os.WriteFile(filepath.Join(dir, "desktop-e2e.png"), last.Data, 0o644) //nolint:gosec // test artifact
+	}
+	for _, id := range []string{sb.ID, fork.ID} {
+		if err := c.Delete(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func atoi(t *testing.T, s string) int64 {
+	t.Helper()
+	var n int64
+	if _, err := fmt.Sscan(s, &n); err != nil {
+		t.Fatalf("not a number: %q", s)
+	}
+	return n
 }
