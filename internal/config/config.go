@@ -39,6 +39,10 @@ type Firecracker struct {
 	UIDBase int `yaml:"uid_base"`
 	// CgroupParent is the cgroup v2 path (relative to /sys/fs/cgroup) that jailed VMs live under.
 	CgroupParent string `yaml:"cgroup_parent"`
+	// CgroupMemoryMaxMiB caps all VMs together (memory.max of CgroupParent); 0 leaves it unset.
+	CgroupMemoryMaxMiB int `yaml:"cgroup_memory_max_mib"`
+	// CgroupCPUWeight is cpu.weight of CgroupParent (1-10000, host default 100); 0 leaves it unset.
+	CgroupCPUWeight int `yaml:"cgroup_cpu_weight"`
 }
 
 type Image struct {
@@ -46,7 +50,33 @@ type Image struct {
 	Kernel   string `yaml:"kernel"`
 	Rootfs   string `yaml:"rootfs"`
 	BootArgs string `yaml:"boot_args"`
+	// Display gives sandboxes of this image a virtual screen; nil means headless.
+	Display *Display `yaml:"display"`
+	// Sandbox overrides the default shape for this image; zero fields inherit.
+	Sandbox *Shape `yaml:"sandbox"`
+	// PoolSize overrides pool.size for this image.
+	PoolSize *int `yaml:"pool_size"`
 }
+
+// Display is a virtual screen's size in pixels.
+type Display struct {
+	Width  int `yaml:"width" json:"width"`
+	Height int `yaml:"height" json:"height"`
+}
+
+// Shape is the part of SandboxDefaults an image may override.
+type Shape struct {
+	VCPU      int `yaml:"vcpu"`
+	MemoryMiB int `yaml:"memory_mib"`
+	DiskMiB   int `yaml:"disk_mib"`
+}
+
+// Display size bounds, and the least memory a display image may run with.
+const (
+	MinDisplayWidth, MinDisplayHeight = 640, 480
+	MaxDisplayWidth, MaxDisplayHeight = 1920, 1200
+	MinDisplayMemoryMiB               = 768
+)
 
 type SandboxDefaults struct {
 	VCPU        int           `yaml:"vcpu"`
@@ -66,6 +96,8 @@ type Limits struct {
 	MaxTTL             time.Duration `yaml:"max_ttl"`
 	MaxExecTimeout     time.Duration `yaml:"max_exec_timeout"`
 	MaxFileBytes       int64         `yaml:"max_file_bytes"`
+	// MaxCommittedMemoryMiB bounds the summed memory of live sandboxes; 0 means unlimited.
+	MaxCommittedMemoryMiB int `yaml:"max_committed_memory_mib"`
 	// RequestsPerSecond and RequestBurst rate-limit each API key.
 	RequestsPerSecond float64 `yaml:"requests_per_second"`
 	RequestBurst      int     `yaml:"request_burst"`
@@ -75,7 +107,8 @@ type Limits struct {
 }
 
 type Pool struct {
-	// Size is the number of pre-restored, paused VMs kept per image.
+	// Size is the number of pre-restored, paused VMs kept per image, unless the
+	// image sets pool_size.
 	Size              int `yaml:"size"`
 	RefillConcurrency int `yaml:"refill_concurrency"`
 }
@@ -194,6 +227,40 @@ func (c *Config) Image(name string) (Image, bool) {
 	return Image{}, false
 }
 
+// ImageShape is the default sandbox shape for img.
+func (c *Config) ImageShape(img Image) SandboxDefaults {
+	s := c.Sandbox
+	if img.Sandbox != nil {
+		if img.Sandbox.VCPU != 0 {
+			s.VCPU = img.Sandbox.VCPU
+		}
+		if img.Sandbox.MemoryMiB != 0 {
+			s.MemoryMiB = img.Sandbox.MemoryMiB
+		}
+		if img.Sandbox.DiskMiB != 0 {
+			s.DiskMiB = img.Sandbox.DiskMiB
+		}
+	}
+	return s
+}
+
+// ImagePoolSize is the number of warm VMs kept for img.
+func (c *Config) ImagePoolSize(img Image) int {
+	if img.PoolSize != nil {
+		return *img.PoolSize
+	}
+	return c.Pool.Size
+}
+
+// TotalPoolSize sums the warm VMs of every image.
+func (c *Config) TotalPoolSize() int {
+	n := 0
+	for _, img := range c.Images {
+		n += c.ImagePoolSize(img)
+	}
+	return n
+}
+
 func (c *Config) Validate() error {
 	var errs []error
 	check := func(ok bool, format string, args ...any) {
@@ -208,15 +275,14 @@ func (c *Config) Validate() error {
 		_, err := netip.ParseAddrPort(c.MetricsListen)
 		check(err == nil, "metrics_listen %q: must be ip:port", c.MetricsListen)
 	}
-	if c.MetricsListen != "" {
-		_, err := netip.ParseAddrPort(c.MetricsListen)
-		check(err == nil, "metrics_listen %q: must be ip:port", c.MetricsListen)
-	}
 	check(c.DataDir != "", "data_dir is required")
 	check(c.Firecracker.Binary != "", "firecracker.binary is required")
 	check(c.Firecracker.JailerBinary != "", "firecracker.jailer_binary is required")
 	check(c.Firecracker.ChrootBase != "", "firecracker.chroot_base is required")
 	check(c.Firecracker.UIDBase > 0, "firecracker.uid_base must be > 0")
+	check(c.Firecracker.CgroupMemoryMaxMiB >= 0, "firecracker.cgroup_memory_max_mib must be >= 0")
+	check(c.Firecracker.CgroupCPUWeight >= 0 && c.Firecracker.CgroupCPUWeight <= 10000,
+		"firecracker.cgroup_cpu_weight must be in [0, 10000]")
 
 	check(len(c.Images) > 0, "at least one image is required")
 	seen := map[string]bool{}
@@ -228,9 +294,30 @@ func (c *Config) Validate() error {
 	}
 
 	s, l := c.Sandbox, c.Limits
-	check(s.VCPU >= 1 && s.VCPU <= l.MaxVCPU, "sandbox.vcpu must be in [1, limits.max_vcpu]")
-	check(s.MemoryMiB >= 128 && s.MemoryMiB <= l.MaxMemoryMiB, "sandbox.memory_mib must be in [128, limits.max_memory_mib]")
-	check(s.DiskMiB >= 64 && s.DiskMiB <= l.MaxDiskMiB, "sandbox.disk_mib must be in [64, limits.max_disk_mib]")
+	checkShape := func(where string, s SandboxDefaults) {
+		check(s.VCPU >= 1 && s.VCPU <= l.MaxVCPU, "%s.vcpu must be in [1, limits.max_vcpu]", where)
+		check(s.MemoryMiB >= 128 && s.MemoryMiB <= l.MaxMemoryMiB, "%s.memory_mib must be in [128, limits.max_memory_mib]", where)
+		check(s.DiskMiB >= 64 && s.DiskMiB <= l.MaxDiskMiB, "%s.disk_mib must be in [64, limits.max_disk_mib]", where)
+	}
+	checkShape("sandbox", s)
+	for i, img := range c.Images {
+		where := fmt.Sprintf("images[%d] (%s)", i, img.Name)
+		if img.Sandbox != nil {
+			checkShape(where+".sandbox", c.ImageShape(img))
+		}
+		if img.PoolSize != nil {
+			check(*img.PoolSize >= 0, "%s.pool_size must be >= 0", where)
+		}
+		if d := img.Display; d != nil {
+			check(d.Width >= MinDisplayWidth && d.Width <= MaxDisplayWidth &&
+				d.Height >= MinDisplayHeight && d.Height <= MaxDisplayHeight,
+				"%s.display must be between %dx%d and %dx%d", where,
+				MinDisplayWidth, MinDisplayHeight, MaxDisplayWidth, MaxDisplayHeight)
+			check(c.ImageShape(img).MemoryMiB >= MinDisplayMemoryMiB,
+				"%s: display images need memory_mib >= %d", where, MinDisplayMemoryMiB)
+		}
+	}
+	check(l.MaxCommittedMemoryMiB >= 0, "limits.max_committed_memory_mib must be >= 0")
 	check(s.TTL > 0 && s.TTL <= l.MaxTTL, "sandbox.ttl must be in (0, limits.max_ttl]")
 	check(s.IdleTimeout > 0, "sandbox.idle_timeout must be > 0")
 	check(l.MaxSandboxes > 0, "limits.max_sandboxes must be > 0")

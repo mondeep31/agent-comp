@@ -34,6 +34,37 @@ func TestValidate(t *testing.T) {
 		{name: "ttl above max", mutate: func(c *Config) { c.Sandbox.TTL = 48 * time.Hour }, wantErr: "ttl"},
 		{name: "ipv6 pool rejected", mutate: func(c *Config) { c.Network.CIDR = "fd00::/64" }, wantErr: "network.cidr"},
 		{name: "tiny pool rejected", mutate: func(c *Config) { c.Network.CIDR = "10.200.0.0/30" }, wantErr: "network.cidr"},
+		{
+			name: "display image with its own shape",
+			mutate: func(c *Config) {
+				c.Images = append(c.Images, Image{
+					Name: "desktop", Kernel: "/k", Rootfs: "/d",
+					Display: &Display{Width: 1280, Height: 800}, Sandbox: &Shape{MemoryMiB: 1024}, PoolSize: ptr(1),
+				})
+			},
+		},
+		{
+			name: "display image needs memory",
+			mutate: func(c *Config) {
+				c.Images[0].Display = &Display{Width: 1280, Height: 800}
+			},
+			wantErr: "display images need memory_mib",
+		},
+		{
+			name: "display size bounds",
+			mutate: func(c *Config) {
+				c.Images[0].Display = &Display{Width: 4000, Height: 800}
+				c.Images[0].Sandbox = &Shape{MemoryMiB: 1024}
+			},
+			wantErr: ".display must be between",
+		},
+		{
+			name:    "image shape above limit",
+			mutate:  func(c *Config) { c.Images[0].Sandbox = &Shape{MemoryMiB: 4096} },
+			wantErr: "images[0] (base).sandbox.memory_mib",
+		},
+		{name: "negative pool size", mutate: func(c *Config) { c.Images[0].PoolSize = ptr(-1) }, wantErr: "pool_size"},
+		{name: "cpu weight range", mutate: func(c *Config) { c.Firecracker.CgroupCPUWeight = 20000 }, wantErr: "cgroup_cpu_weight"},
 		{name: "bad deny prefix", mutate: func(c *Config) { c.Network.DenyCIDRs = []string{"nope"} }, wantErr: "deny_cidrs"},
 		{
 			name: "network checks skipped when disabled",
@@ -111,5 +142,27 @@ func TestExampleConfigMatchesDefaults(t *testing.T) {
 	want.Images = cfg.Images
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("example config drifted from Default():\n got %+v\nwant %+v", cfg, want)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func TestImageShapeAndPool(t *testing.T) {
+	cfg := validConfig()
+	desktop := Image{Name: "desktop", Sandbox: &Shape{MemoryMiB: 1024}, PoolSize: ptr(1)}
+	cfg.Images = append(cfg.Images, desktop)
+
+	if got := cfg.ImageShape(cfg.Images[0]); got != cfg.Sandbox {
+		t.Fatalf("base shape = %+v, want defaults %+v", got, cfg.Sandbox)
+	}
+	got := cfg.ImageShape(desktop)
+	if got.MemoryMiB != 1024 || got.VCPU != cfg.Sandbox.VCPU || got.DiskMiB != cfg.Sandbox.DiskMiB {
+		t.Fatalf("desktop shape = %+v", got)
+	}
+	if n := cfg.ImagePoolSize(cfg.Images[0]); n != cfg.Pool.Size {
+		t.Fatalf("base pool = %d", n)
+	}
+	if n := cfg.TotalPoolSize(); n != cfg.Pool.Size+1 {
+		t.Fatalf("total pool = %d", n)
 	}
 }
