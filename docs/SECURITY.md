@@ -34,6 +34,8 @@ automated test, ⏳ open.
 | Disk bandwidth limit (`limits.disk_bandwidth_mibps`) | 🔶 | driver rate limiter |
 | Stale jails and cgroups are removed at startup | 🔶 | `cleanupStale` |
 | Snapshot clones get a fresh hostname, clock and entropy mixed into the guest RNG | ✅ | `sandbox.configure`, `TestSnapshotFork` |
+| Resumed sandboxes get the host clock and fresh entropy again | ✅ | `sandbox.syncClock`, `TestResumeResyncsClock` |
+| Host memory budget for live sandboxes (`limits.max_committed_memory_mib`) and a cap on all VMs together (`firecracker.cgroup_memory_max_mib`, `cgroup_cpu_weight`) | ✅ | `TestMemoryBudget`, driver |
 
 ### Network
 
@@ -54,6 +56,18 @@ automated test, ⏳ open.
 | Unknown error codes and file types from the guest never panic acd | 🔶 | `sandbox/ops.go` |
 | Output captured for the API is capped (1 MiB per stream); file reads capped (`max_file_bytes`) | ✅ | `TestExec`, `TestWriteFileLimit` |
 | Guest error messages are passed through only for known error classes | ✅ | `api.classify` |
+
+### Desktop images (screen and input)
+
+| Control | Status | Where |
+| --- | --- | --- |
+| The screen is a virtual X server inside the guest: no new host device, no GPU, no inbound path; screenshots and input travel over the existing vsock protocol | ✅ | `guest/agentd/src/display`, `TestDesktopImage` |
+| X listens on a Unix socket only (`-nolisten tcp`); the desktop runs as the unprivileged `agent` user with Chromium's own sandbox (user namespaces) on | ✅ | `display/session.rs`, `images/profiles/desktop.sh` |
+| Input caps per call: 64 events, 4096 characters, 30 s of delays; actions are validated against the screen before reaching the guest | ✅ | `display/ops.rs`, `TestCompileActions` |
+| Keys and buttons pressed by a failed input batch are released | 🔶 | `display/ops.rs` |
+| Screenshots capped at 8 MiB in the guest and 16 MiB in acd, which never trusts the announced size | ✅ | `TestScreenshotCollectsChunksAndCapsSize` |
+| Guest image bytes are served as `image/png` or `image/jpeg` with `nosniff` and a sandbox CSP | 🔶 | `api.screenshot` |
+| Chromium's managed policy turns off sign-in, sync, update checks and background networking | 🔶 | `images/profiles/desktop.sh` |
 
 ### API and ingress
 
@@ -95,7 +109,13 @@ automated test, ⏳ open.
   VMGenID support in the guest kernel would reseed it at resume.
 - Egress allowlists per key (only `pypi.org`, `github.com`, …) and per-key
   bandwidth accounting.
-- Image signing and an SBOM for `base.ext4`.
+- Image signing and an SBOM for `base.ext4` and `desktop.ext4`.
+- Desktop clones start from one golden snapshot with Chromium already
+  running, so they share its in-process state (profile identity, the
+  browser's userspace RNG state) until it reseeds. Kernel entropy is mixed in
+  at restore, but process-level CSPRNGs are not. Starting the browser after
+  restore instead costs about 5.6 s per sandbox on the dev host.
+- A live view (VNC over a WebSocket) for humans watching or taking over.
 - A persistent audit log of API actions per key.
 - The per-VM cgroups live under a top-level `agent-comp` cgroup instead of a
   systemd-delegated subtree.

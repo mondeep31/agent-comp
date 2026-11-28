@@ -49,4 +49,4 @@ Every sandbox has its own guest kernel, jail, UID/GID, resource limits, and netw
 
 ## Boundaries of v1
 
-The platform is headless Linux on one host. Multi-host scheduling and production capacity planning remain future work. User snapshots are in-memory service resources and do not survive acd restarts; they are not backups.
+The platform runs on one host. Sandboxes are headless Linux by default; images with a `display` add a virtual screen (Xvfb, openbox and Chromium) that agentd captures and drives natively over X11, exposed as the screenshot and computer endpoints and the MCP `computer_action` tool. Multi-host scheduling and production capacity planning remain future work. User snapshots are in-memory service resources and do not survive acd restarts; they are not backups.

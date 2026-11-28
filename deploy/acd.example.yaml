@@ -14,12 +14,25 @@ firecracker:
   chroot_base: /var/lib/agent-comp/jailer
   uid_base: 200000
   cgroup_parent: agent-comp
+  # Caps for all VMs together (memory.max and cpu.weight of cgroup_parent),
+  # so co-hosted services keep their share. 0 leaves them unset.
+  cgroup_memory_max_mib: 0
+  cgroup_cpu_weight: 0
 
 images:
   - name: base
     kernel: /var/lib/agent-comp/images/vmlinux
     rootfs: /var/lib/agent-comp/images/base.ext4
     # boot_args defaults to booting agentd as init.
+  # A computer with a screen and a browser (make image-desktop). Images may
+  # override the default shape and pool size; display images need at least
+  # 768 MiB. Remove this entry if desktop.ext4 is not built.
+  # - name: desktop
+  #   kernel: /var/lib/agent-comp/images/vmlinux
+  #   rootfs: /var/lib/agent-comp/images/desktop.ext4
+  #   display: {width: 1280, height: 800}
+  #   sandbox: {memory_mib: 1024}
+  #   pool_size: 1
 
 sandbox:
   vcpu: 1
@@ -38,13 +51,16 @@ limits:
   max_ttl: 24h
   max_exec_timeout: 30m
   max_file_bytes: 67108864
+  # Summed memory of all live sandboxes; 0 means unlimited.
+  max_committed_memory_mib: 0
   requests_per_second: 20
   request_burst: 40
   disk_bandwidth_mibps: 200
   net_bandwidth_mbps: 200
 
 pool:
-  # Paused, pre-restored VMs kept per image at the default shape.
+  # Paused, pre-restored VMs kept per image at its default shape, unless the
+  # image sets pool_size.
   size: 4
   refill_concurrency: 2
 

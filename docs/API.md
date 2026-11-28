@@ -23,9 +23,24 @@ Non-2xx responses carry:
 | 404 | `not_found` | No such sandbox, snapshot, file or program |
 | 409 | `conflict` | Wrong state, e.g. the sandbox is stopped |
 | 413 | `too_large` | File over `limits.max_file_bytes` |
-| 429 | `quota_exceeded` / `rate_limited` | Sandbox or snapshot quota, or request rate |
-| 503 | `unavailable` | acd is shutting down |
+| 429 | `quota_exceeded` / `rate_limited` | Sandbox, snapshot or host memory quota, or request rate |
+| 503 | `unavailable` | acd is shutting down, or a sandbox's display is not ready |
 | 500 | `internal` | Details are in acd's log, never in the response |
+
+## Images
+
+`GET /v1/images` lists the images sandboxes can start from:
+
+```json
+{"images": [
+  {"name": "base", "default": true, "vcpu": 1, "memory_mib": 256, "disk_mib": 2048},
+  {"name": "desktop", "default": false, "vcpu": 1, "memory_mib": 1024, "disk_mib": 2048,
+   "display": {"width": 1280, "height": 800}}
+]}
+```
+
+Images with a `display` have a screen (see [Screen](#screen)). The shape is
+each image's default for new sandboxes.
 
 ## Sandboxes
 
@@ -39,7 +54,8 @@ Non-2xx responses carry:
 | `POST /v1/sandboxes/{id}/resume` | | Sandbox |
 | `POST /v1/sandboxes/{id}/snapshot` | | `201` Snapshot |
 
-`CreateSandboxRequest` fields are all optional: `image`, `vcpu`, `memory_mib`,
+`CreateSandboxRequest` fields are all optional: `image` (default: the first
+configured image; shape fields default to the image's shape), `vcpu`, `memory_mib`,
 `disk_mib`, `ttl_seconds`, `idle_timeout_seconds`, `env` (default environment
 for every command), `from_snapshot` (fork a snapshot instead of a fresh
 image) and `metadata` (up to 16 string pairs).
@@ -98,6 +114,52 @@ All paths are absolute paths inside the sandbox.
 
 Writes create parent directories. A File is `{path, name, type, size, mode,
 mtime}` with `type` one of `file`, `dir`, `symlink`, `other`.
+
+## Screen
+
+Sandboxes from an image with a `display` (such as `desktop`) run a virtual
+screen with a browser. Their Sandbox object has `display: {width, height}`.
+On other sandboxes these endpoints return `400`, and while the screen is
+still starting (or restarting after a crash) they return `503`.
+
+| Method and path | Body | Response |
+| --- | --- | --- |
+| `GET /v1/sandboxes/{id}/screenshot[?format=png\|jpeg][&quality=1-100][&region=x0,y0,x1,y1]` | | Image bytes |
+| `POST /v1/sandboxes/{id}/computer` | Action | `{"cursor_x", "cursor_y", "image"?}` |
+
+A screenshot is `image/png` (default) or `image/jpeg`, with
+`X-Screen-Width` and `X-Screen-Height` headers. JPEG is about half the
+latency of PNG for the same screen.
+
+An Action uses the computer-use vocabulary agents already speak, so a
+model's tool call can be forwarded as is:
+
+| `action` | Parameters |
+| --- | --- |
+| `screenshot` | |
+| `zoom` | `region` `[x0, y0, x1, y1]`: returns that part at full resolution |
+| `cursor_position` | |
+| `mouse_move` | `coordinate` `[x, y]` |
+| `left_click`, `right_click`, `middle_click`, `double_click`, `triple_click` | optional `coordinate`; optional `text`: modifiers held during the click, e.g. `"shift"` |
+| `left_click_drag` | `start_coordinate`, `coordinate` |
+| `left_mouse_down`, `left_mouse_up` | optional `coordinate` |
+| `scroll` | `scroll_direction` (`up`, `down`, `left`, `right`), `scroll_amount` (wheel clicks, default 3), optional `coordinate` and modifier `text` |
+| `type` | `text`: any Unicode, up to 4096 characters |
+| `key` | `text`: a key or chord by X keysym name, e.g. `Return`, `ctrl+l`, `ctrl+shift+Tab`, `F5` |
+| `hold_key` | `text`, `duration` (seconds, up to 30) |
+| `wait` | `duration` (seconds, up to 60) |
+
+Coordinates are pixels from the top left of the screen and must lie on it.
+Set `"screenshot": true` to get a screenshot after the action (after a
+300 ms settle), base64 in `image.data` with `image.mime_type`; `format` and
+`quality` choose its encoding. `screenshot` and `zoom` always return one.
+
+```sh
+id=$(acctl create -image desktop -q)
+acctl computer "$id" left_click '{"coordinate": [640, 60]}'
+acctl computer "$id" type '{"text": "example.com\n"}'
+acctl screenshot -o screen.png "$id"
+```
 
 ## Snapshots
 

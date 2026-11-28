@@ -1,6 +1,6 @@
 # Firecracker Agent Computers - Plan
 
-Build a Go control plane plus a Rust in-VM guest agent that gives agents isolated Firecracker microVMs ("computers") in well under a second via snapshot/restore and a warm pool, exposed through an HTTP/WebSocket API and an MCP server. v1 is headless Linux: shell exec, file I/O, outbound network.
+Build a Go control plane plus a Rust in-VM guest agent that gives agents isolated Firecracker microVMs ("computers") in well under a second via snapshot/restore and a warm pool, exposed through an HTTP/WebSocket API and an MCP server. v1 is headless Linux: shell exec, file I/O, outbound network. Since November 2026, images may also have a virtual screen (desktop image, screenshots and computer-use input); see `docs/API.md#screen`.
 
 Shared memory for all agents: innernet project `agent-comp` (see "Shared memory: innernet").
 

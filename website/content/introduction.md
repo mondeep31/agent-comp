@@ -27,6 +27,6 @@ The warm-pool benchmark reached **9.7 ms p50** to a configured guest on the deve
 
 ## Project status
 
-The core v1 implementation is complete and running on a development host. This is a single-host, headless Linux platform. Production readiness, durable user snapshots, GUI desktops, and a multi-host scheduler are not implied by that milestone.
+The core v1 implementation is complete and running on a development host. This is a single-host Linux platform. Sandboxes are headless by default, and the optional `desktop` image gives agents a screen with a browser for computer use. Production readiness, durable user snapshots, a live human view of desktops, and a multi-host scheduler are not implied by that milestone.
 
 The next priorities are a stable API hostname, individual agent credentials, and the remaining security hardening. [Read the status and next steps](roadmap.html).

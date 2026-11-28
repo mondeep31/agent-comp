@@ -21,12 +21,25 @@ firecracker:
   chroot_base: /var/lib/agent-comp/jailer
   uid_base: 200000
   cgroup_parent: agent-comp
+  # Caps for all VMs together (memory.max and cpu.weight of cgroup_parent),
+  # so co-hosted services keep their share. 0 leaves them unset.
+  cgroup_memory_max_mib: 0
+  cgroup_cpu_weight: 0
 
 images:
   - name: base
     kernel: /var/lib/agent-comp/images/vmlinux
     rootfs: /var/lib/agent-comp/images/base.ext4
     # boot_args defaults to booting agentd as init.
+  # A computer with a screen and a browser (make image-desktop). Images may
+  # override the default shape and pool size; display images need at least
+  # 768 MiB. Remove this entry if desktop.ext4 is not built.
+  # - name: desktop
+  #   kernel: /var/lib/agent-comp/images/vmlinux
+  #   rootfs: /var/lib/agent-comp/images/desktop.ext4
+  #   display: {width: 1280, height: 800}
+  #   sandbox: {memory_mib: 1024}
+  #   pool_size: 1
 
 sandbox:
   vcpu: 1
@@ -45,13 +58,16 @@ limits:
   max_ttl: 24h
   max_exec_timeout: 30m
   max_file_bytes: 67108864
+  # Summed memory of all live sandboxes; 0 means unlimited.
+  max_committed_memory_mib: 0
   requests_per_second: 20
   request_burst: 40
   disk_bandwidth_mibps: 200
   net_bandwidth_mbps: 200
 
 pool:
-  # Paused, pre-restored VMs kept per image at the default shape.
+  # Paused, pre-restored VMs kept per image at its default shape, unless the
+  # image sets pool_size.
   size: 4
   refill_concurrency: 2
 
@@ -75,4 +91,8 @@ Key reload uses SIGHUP (`systemctl reload acd`). Configuration changes requiring
 
 ## Sizing and quotas
 
-Pool size is per image at the default shape. Resource caps and per-key quotas are upper bounds, not a guarantee that the host can support all combinations concurrently. Measure on the target host before increasing concurrency.
+Pool size is per image at that image's default shape; an image's `pool_size` overrides `pool.size`. `limits.max_committed_memory_mib` refuses new sandboxes once the memory of live ones would pass it, and `firecracker.cgroup_memory_max_mib` caps the VMs' actual memory together, which protects other services on a shared host.
+
+## Desktop images
+
+An image with `display` boots with a virtual screen: agentd starts Xvfb and the image's desktop session (openbox and Chromium in `make image-desktop`) before the golden snapshot, so sandboxes and pooled VMs start with the browser already open. Screenshots and input go through `GET /v1/sandboxes/{id}/screenshot`, `POST /v1/sandboxes/{id}/computer` and the MCP `computer_action` tool. Give display images at least 768 MiB (1024 is comfortable) and a small pool; each idle pooled desktop costs about 25 MiB of host memory and an active one about 80-300 MiB on the dev host. Resource caps and per-key quotas are upper bounds, not a guarantee that the host can support all combinations concurrently. Measure on the target host before increasing concurrency.

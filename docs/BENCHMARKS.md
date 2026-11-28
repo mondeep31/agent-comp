@@ -83,3 +83,40 @@ Most of the tunnel round trip is the path from the host to the Cloudflare
 edge and back (twice, since the client also ran on the host); an agent
 calling from elsewhere pays one leg to its nearest edge plus the
 edge-to-host leg.
+
+## Desktop images
+
+The `desktop` image (`make image-desktop`): Debian trixie, Xvfb at
+1280x800, openbox and Chromium running as the `agent` user, 1 vCPU and
+1024 MiB. Screenshots and input go through agentd's native X11 client
+(x11rb and XTEST, in-process PNG and JPEG encoding). Measured on 2026-11-28
+with `TestDesktopImage` and `TestDesktopDensity` (full acd stack, no
+network, `-race`) and `make test-rust-x11`.
+
+| Host tag | Path | Result |
+| --- | --- | --- |
+| dev-nested-comp-agents | Golden build: cold boot, Chromium up, screen settled, 1 GiB snapshot | 14-15.5 s, once per shape |
+| dev-nested-comp-agents | Warm `POST /v1/sandboxes`, pool of 3 | 108-145 ms |
+| dev-nested-comp-agents | Warm create while the pool refills (CPU contention) | 1.6-2.3 s |
+| dev-nested-comp-agents | First screenshot after a warm create | 0.34-0.65 s |
+| dev-nested-comp-agents | Screenshot over the API, JPEG 1280x800 (~30 KB) | 75-450 ms, typically ~250 ms |
+| dev-nested-comp-agents | Screenshot over the API, PNG 1280x800 (~30 KB) | 97-800 ms |
+| dev-nested-comp-agents | `left_click`, `key`, `scroll`, `cursor_position` | 6-28 ms |
+| dev-nested-comp-agents | `type` of 13 characters with Unicode (ö, €) | 94-137 ms |
+| dev-nested-comp-agents | Screenshot of a paused desktop (auto-resume included) | 75 ms |
+| dev-nested-comp-agents | Fork a desktop from a user snapshot | 578 ms |
+| dev-nested-comp-agents | Host memory per desktop, idle in the pool (private / RSS) | ~26 / ~125 MiB |
+| dev-nested-comp-agents | Host memory per desktop in use (private / RSS) | ~82-86 / ~290-315 MiB |
+
+Takeaways:
+
+- A desktop clone shares Chromium's pages with the golden snapshot through
+  the page cache: an idle pooled desktop costs ~26 MiB of private memory,
+  one that has taken screenshots and input ~85 MiB. The guest itself uses
+  ~325 MiB of its 1 GiB.
+- Screenshot latency is dominated by nested-virtualization page faults and
+  vsock round trips, not encoding: the same capture under Xvfb on the host
+  takes a few ms. JPEG is the better default for agents.
+- Warm creates are slower than headless ones (108-145 ms vs 22-35 ms)
+  because acquiring a desktop also resumes Chromium's threads. Creates that
+  land while the pool restores replacements wait for CPU on the 4 vCPU host.

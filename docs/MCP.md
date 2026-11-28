@@ -5,7 +5,8 @@ Firecracker microVM.
 
 | Tool | What it does |
 | --- | --- |
-| `create_computer` | Start a computer (optionally `from_snapshot`), returns its id |
+| `list_images` | Images with their default size, and which have a screen |
+| `create_computer` | Start a computer (optionally `image` or `from_snapshot`), returns its id |
 | `list_computers` | Your computers with state and expiry |
 | `run_command` | Shell command; exit code, stdout, stderr (1 MiB each) |
 | `read_file` | Read up to 1 MiB; text as UTF-8, binary as base64 |
@@ -13,6 +14,13 @@ Firecracker microVM.
 | `list_files` | Directory listing |
 | `snapshot_computer` | Save memory and disk; fork with `create_computer` |
 | `destroy_computer` | Delete a computer |
+| `computer_action` | Use the screen of a computer with a display: `screenshot`, clicks, `type`, `key`, `scroll`, ... |
+
+`computer_action` takes `computer_id`, `action` and the action's parameters
+(see [Screen in the API](API.md#screen)). It returns the cursor position and,
+for every action except `cursor_position` and `wait`, a screenshot as MCP
+image content (`"screenshot": false` turns it off). Create the computer with
+`image: "desktop"` to get a screen; it boots into a maximized Chromium.
 
 There are two transports and both use the same API key.
 
