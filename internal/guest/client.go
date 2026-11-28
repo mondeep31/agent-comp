@@ -117,6 +117,9 @@ func (c *Client) call(ctx context.Context, req *agentdv1.Frame) (*agentdv1.Frame
 	return cn.recv(ctx)
 }
 
+// ErrNoDisplay is returned for display operations on a headless guest.
+var ErrNoDisplay = errors.New("guest: no display")
+
 func (c *Client) Ping(ctx context.Context) (*agentdv1.Pong, error) {
 	f, err := c.call(ctx, &agentdv1.Frame{Kind: &agentdv1.Frame_Ping{Ping: &agentdv1.Ping{}}})
 	if err != nil {
@@ -131,17 +134,53 @@ func (c *Client) Ping(ctx context.Context) (*agentdv1.Pong, error) {
 // WaitReady pings until agentd answers or ctx ends. Each attempt is bounded so
 // a connection accepted before the guest's listener exists cannot hang it.
 func (c *Client) WaitReady(ctx context.Context) error {
+	_, err := c.Ready(ctx)
+	return err
+}
+
+// WaitDisplay pings until the guest's display is ready. It fails at once for
+// a headless guest, and with the guest's reason when ctx ends first.
+func (c *Client) WaitDisplay(ctx context.Context) (*agentdv1.Display, error) {
+	const pause = 100 * time.Millisecond
+	var last *agentdv1.Display
+	for {
+		pong, err := c.Ready(ctx)
+		if err != nil {
+			return nil, err
+		}
+		d := pong.GetDisplay()
+		if d == nil {
+			return nil, ErrNoDisplay
+		}
+		if d.GetReady() {
+			return d, nil
+		}
+		last = d
+		select {
+		case <-ctx.Done():
+			reason := "still starting"
+			if last.GetError() != "" {
+				reason = last.GetError()
+			}
+			return nil, fmt.Errorf("guest: display not ready (%s): %w", reason, ctx.Err())
+		case <-time.After(pause):
+		}
+	}
+}
+
+// Ready is WaitReady that also returns agentd's first Pong.
+func (c *Client) Ready(ctx context.Context) (*agentdv1.Pong, error) {
 	const attempt, pause = 250 * time.Millisecond, 5 * time.Millisecond
 	for {
 		actx, cancel := context.WithTimeout(ctx, attempt)
-		_, err := c.Ping(actx)
+		pong, err := c.Ping(actx)
 		cancel()
 		if err == nil {
-			return nil
+			return pong, nil
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("guest: agent not ready: %w", errors.Join(ctx.Err(), err))
+			return nil, fmt.Errorf("guest: agent not ready: %w", errors.Join(ctx.Err(), err))
 		case <-time.After(pause):
 		}
 	}

@@ -315,6 +315,8 @@ func guestErr(err error) error {
 		return fmt.Errorf("%w: %s", ErrConflict, ge.Message)
 	case agentdv1.ErrorCode_ERROR_CODE_TOO_LARGE:
 		return fmt.Errorf("%w: %s", ErrTooLarge, ge.Message)
+	case agentdv1.ErrorCode_ERROR_CODE_UNAVAILABLE:
+		return fmt.Errorf("%w: %s", ErrUnavailable, ge.Message)
 	case agentdv1.ErrorCode_ERROR_CODE_INTERNAL, agentdv1.ErrorCode_ERROR_CODE_UNSPECIFIED:
 		return err
 	default:

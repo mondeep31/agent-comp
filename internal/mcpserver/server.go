@@ -72,7 +72,8 @@ type tools struct {
 func (t *tools) publicError(err error) error {
 	for _, known := range []error{
 		sandbox.ErrNotFound, sandbox.ErrInvalid, sandbox.ErrQuota, sandbox.ErrConflict,
-		sandbox.ErrPermission, sandbox.ErrTooLarge, sandbox.ErrClosed, errUnauthenticated, errReadTooLarge,
+		sandbox.ErrPermission, sandbox.ErrTooLarge, sandbox.ErrClosed, sandbox.ErrUnavailable,
+		errUnauthenticated, errReadTooLarge,
 		context.DeadlineExceeded, context.Canceled,
 	} {
 		if errors.Is(err, known) {

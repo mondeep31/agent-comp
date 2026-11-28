@@ -39,6 +39,9 @@ var (
 	// ErrPermission and ErrTooLarge come from inside the guest.
 	ErrPermission = errors.New("permission denied")
 	ErrTooLarge   = errors.New("too large")
+	// ErrUnavailable means the guest cannot serve the request right now,
+	// e.g. its display is still starting.
+	ErrUnavailable = errors.New("unavailable")
 )
 
 func invalid(format string, args ...any) error {

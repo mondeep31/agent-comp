@@ -270,7 +270,7 @@ func classify(err error) (status int, code string, public bool) {
 		return http.StatusForbidden, "permission_denied", true
 	case errors.Is(err, sandbox.ErrTooLarge):
 		return http.StatusRequestEntityTooLarge, "too_large", true
-	case errors.Is(err, sandbox.ErrClosed):
+	case errors.Is(err, sandbox.ErrClosed), errors.Is(err, sandbox.ErrUnavailable):
 		return http.StatusServiceUnavailable, "unavailable", true
 	case errors.Is(err, context.DeadlineExceeded):
 		return http.StatusGatewayTimeout, "timeout", true
