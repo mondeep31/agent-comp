@@ -129,6 +129,12 @@ func (c *Client) List(ctx context.Context) ([]sandbox.Info, error) {
 	return out.Sandboxes, c.json(ctx, http.MethodGet, "/v1/sandboxes", nil, nil, &out)
 }
 
+// Images lists the server's images.
+func (c *Client) Images(ctx context.Context) ([]sandbox.ImageInfo, error) {
+	var out api.ImageList
+	return out.Images, c.json(ctx, http.MethodGet, "/v1/images", nil, nil, &out)
+}
+
 func (c *Client) Get(ctx context.Context, id string) (*sandbox.Info, error) {
 	var out sandbox.Info
 	return &out, c.json(ctx, http.MethodGet, sb(id), nil, nil, &out)

@@ -36,6 +36,7 @@ Keys:
 Sandboxes:
   create [flags]                create a sandbox and print it
   ls                            list sandboxes
+  images                        list images and their default shapes
   get ID                        show a sandbox
   rm ID...                      delete sandboxes
   pause ID | resume ID
@@ -128,6 +129,12 @@ func run(ctx context.Context, args []string) error {
 		return mcpserver.New(mcpserver.Remote(c), version.Version, log).Run(ctx, &mcp.StdioTransport{})
 	case "create":
 		return create(ctx, c, args)
+	case "images":
+		imgs, err := c.Images(ctx)
+		if err != nil {
+			return err
+		}
+		return printJSON(imgs)
 	case "ls":
 		list, err := c.List(ctx)
 		if err != nil {

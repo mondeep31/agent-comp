@@ -44,6 +44,10 @@ type SnapshotList struct {
 	Snapshots []sandbox.SnapshotInfo `json:"snapshots"`
 }
 
+type ImageList struct {
+	Images []sandbox.ImageInfo `json:"images"`
+}
+
 type DirListing struct {
 	Path    string              `json:"path"`
 	Entries []sandbox.FileEntry `json:"entries"`

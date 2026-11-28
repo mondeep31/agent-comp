@@ -76,6 +76,10 @@ func (s *Server) listSnapshots(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, SnapshotList{Snapshots: s.m.ListSnapshots(Owner(r.Context()))})
 }
 
+func (s *Server) listImages(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, ImageList{Images: s.m.Images()})
+}
+
 func (s *Server) deleteSnapshot(w http.ResponseWriter, r *http.Request) {
 	if err := s.m.DeleteSnapshot(Owner(r.Context()), r.PathValue("id")); err != nil {
 		s.fail(w, r, err)

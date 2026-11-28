@@ -118,6 +118,7 @@ func (s *Server) Handler() http.Handler {
 		"GET /v1/sandboxes/{id}/ls":        s.listDir,
 		"GET /v1/sandboxes/{id}/stat":      s.stat,
 		"GET /v1/snapshots":                s.listSnapshots,
+		"GET /v1/images":                   s.listImages,
 		"DELETE /v1/snapshots/{id}":        s.deleteSnapshot,
 	} {
 		route(v1, pattern, h)
