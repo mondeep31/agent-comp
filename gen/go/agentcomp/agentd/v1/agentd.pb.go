@@ -31,6 +31,9 @@ const (
 	ErrorCode_ERROR_CODE_ALREADY_EXISTS    ErrorCode = 4
 	ErrorCode_ERROR_CODE_TOO_LARGE         ErrorCode = 5
 	ErrorCode_ERROR_CODE_INTERNAL          ErrorCode = 6
+	// The operation needs something the guest does not have right now, such
+	// as a display that is still starting or has crashed.
+	ErrorCode_ERROR_CODE_UNAVAILABLE ErrorCode = 7
 )
 
 // Enum value maps for ErrorCode.
@@ -43,6 +46,7 @@ var (
 		4: "ERROR_CODE_ALREADY_EXISTS",
 		5: "ERROR_CODE_TOO_LARGE",
 		6: "ERROR_CODE_INTERNAL",
+		7: "ERROR_CODE_UNAVAILABLE",
 	}
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED":       0,
@@ -52,6 +56,7 @@ var (
 		"ERROR_CODE_ALREADY_EXISTS":    4,
 		"ERROR_CODE_TOO_LARGE":         5,
 		"ERROR_CODE_INTERNAL":          6,
+		"ERROR_CODE_UNAVAILABLE":       7,
 	}
 )
 
@@ -615,9 +620,11 @@ func (*Ping) Descriptor() ([]byte, []int) {
 }
 
 type Pong struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	AgentVersion  string                 `protobuf:"bytes,1,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
-	UptimeMs      uint64                 `protobuf:"varint,2,opt,name=uptime_ms,json=uptimeMs,proto3" json:"uptime_ms,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	AgentVersion string                 `protobuf:"bytes,1,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
+	UptimeMs     uint64                 `protobuf:"varint,2,opt,name=uptime_ms,json=uptimeMs,proto3" json:"uptime_ms,omitempty"`
+	// Set when the guest was booted with a display (ac.display=WxH).
+	Display       *Display `protobuf:"bytes,3,opt,name=display,proto3" json:"display,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -666,6 +673,84 @@ func (x *Pong) GetUptimeMs() uint64 {
 	return 0
 }
 
+func (x *Pong) GetDisplay() *Display {
+	if x != nil {
+		return x.Display
+	}
+	return nil
+}
+
+// The guest's virtual screen.
+type Display struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Width  uint32                 `protobuf:"varint,1,opt,name=width,proto3" json:"width,omitempty"`
+	Height uint32                 `protobuf:"varint,2,opt,name=height,proto3" json:"height,omitempty"`
+	// True once the X server is up and the desktop session reports ready.
+	Ready bool `protobuf:"varint,3,opt,name=ready,proto3" json:"ready,omitempty"`
+	// Why the display is not ready, when it failed.
+	Error         string `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Display) Reset() {
+	*x = Display{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Display) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Display) ProtoMessage() {}
+
+func (x *Display) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Display.ProtoReflect.Descriptor instead.
+func (*Display) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Display) GetWidth() uint32 {
+	if x != nil {
+		return x.Width
+	}
+	return 0
+}
+
+func (x *Display) GetHeight() uint32 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *Display) GetReady() bool {
+	if x != nil {
+		return x.Ready
+	}
+	return false
+}
+
+func (x *Display) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 type ExecStart struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// argv[0] is resolved through PATH. Use ["/bin/sh", "-c", cmd] for shell syntax.
@@ -682,7 +767,7 @@ type ExecStart struct {
 
 func (x *ExecStart) Reset() {
 	*x = ExecStart{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[4]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -694,7 +779,7 @@ func (x *ExecStart) String() string {
 func (*ExecStart) ProtoMessage() {}
 
 func (x *ExecStart) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[4]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -707,7 +792,7 @@ func (x *ExecStart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecStart.ProtoReflect.Descriptor instead.
 func (*ExecStart) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{4}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ExecStart) GetArgv() []string {
@@ -755,7 +840,7 @@ type ExecStdin struct {
 
 func (x *ExecStdin) Reset() {
 	*x = ExecStdin{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[5]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -767,7 +852,7 @@ func (x *ExecStdin) String() string {
 func (*ExecStdin) ProtoMessage() {}
 
 func (x *ExecStdin) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[5]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -780,7 +865,7 @@ func (x *ExecStdin) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecStdin.ProtoReflect.Descriptor instead.
 func (*ExecStdin) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{5}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ExecStdin) GetData() []byte {
@@ -807,7 +892,7 @@ type ExecSignal struct {
 
 func (x *ExecSignal) Reset() {
 	*x = ExecSignal{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[6]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -819,7 +904,7 @@ func (x *ExecSignal) String() string {
 func (*ExecSignal) ProtoMessage() {}
 
 func (x *ExecSignal) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[6]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -832,7 +917,7 @@ func (x *ExecSignal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecSignal.ProtoReflect.Descriptor instead.
 func (*ExecSignal) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{6}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ExecSignal) GetSignal() int32 {
@@ -852,7 +937,7 @@ type ExecOutput struct {
 
 func (x *ExecOutput) Reset() {
 	*x = ExecOutput{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[7]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -864,7 +949,7 @@ func (x *ExecOutput) String() string {
 func (*ExecOutput) ProtoMessage() {}
 
 func (x *ExecOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[7]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -877,7 +962,7 @@ func (x *ExecOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecOutput.ProtoReflect.Descriptor instead.
 func (*ExecOutput) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{7}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ExecOutput) GetStream() Stream {
@@ -908,7 +993,7 @@ type ExecExit struct {
 
 func (x *ExecExit) Reset() {
 	*x = ExecExit{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[8]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -920,7 +1005,7 @@ func (x *ExecExit) String() string {
 func (*ExecExit) ProtoMessage() {}
 
 func (x *ExecExit) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[8]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -933,7 +1018,7 @@ func (x *ExecExit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecExit.ProtoReflect.Descriptor instead.
 func (*ExecExit) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{8}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ExecExit) GetExitCode() int32 {
@@ -975,7 +1060,7 @@ type ReadFile struct {
 
 func (x *ReadFile) Reset() {
 	*x = ReadFile{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[9]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -987,7 +1072,7 @@ func (x *ReadFile) String() string {
 func (*ReadFile) ProtoMessage() {}
 
 func (x *ReadFile) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[9]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1000,7 +1085,7 @@ func (x *ReadFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadFile.ProtoReflect.Descriptor instead.
 func (*ReadFile) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{9}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ReadFile) GetPath() string {
@@ -1030,7 +1115,7 @@ type WriteFile struct {
 
 func (x *WriteFile) Reset() {
 	*x = WriteFile{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[10]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1042,7 +1127,7 @@ func (x *WriteFile) String() string {
 func (*WriteFile) ProtoMessage() {}
 
 func (x *WriteFile) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[10]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1055,7 +1140,7 @@ func (x *WriteFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteFile.ProtoReflect.Descriptor instead.
 func (*WriteFile) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{10}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *WriteFile) GetPath() string {
@@ -1096,7 +1181,7 @@ type FileData struct {
 
 func (x *FileData) Reset() {
 	*x = FileData{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[11]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1108,7 +1193,7 @@ func (x *FileData) String() string {
 func (*FileData) ProtoMessage() {}
 
 func (x *FileData) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[11]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1121,7 +1206,7 @@ func (x *FileData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileData.ProtoReflect.Descriptor instead.
 func (*FileData) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{11}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *FileData) GetData() []byte {
@@ -1152,7 +1237,7 @@ type FileInfo struct {
 
 func (x *FileInfo) Reset() {
 	*x = FileInfo{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[12]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1164,7 +1249,7 @@ func (x *FileInfo) String() string {
 func (*FileInfo) ProtoMessage() {}
 
 func (x *FileInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[12]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1177,7 +1262,7 @@ func (x *FileInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileInfo.ProtoReflect.Descriptor instead.
 func (*FileInfo) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{12}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *FileInfo) GetPath() string {
@@ -1231,7 +1316,7 @@ type Stat struct {
 
 func (x *Stat) Reset() {
 	*x = Stat{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[13]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1243,7 +1328,7 @@ func (x *Stat) String() string {
 func (*Stat) ProtoMessage() {}
 
 func (x *Stat) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[13]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1256,7 +1341,7 @@ func (x *Stat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Stat.ProtoReflect.Descriptor instead.
 func (*Stat) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{13}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Stat) GetPath() string {
@@ -1275,7 +1360,7 @@ type ListDir struct {
 
 func (x *ListDir) Reset() {
 	*x = ListDir{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[14]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1287,7 +1372,7 @@ func (x *ListDir) String() string {
 func (*ListDir) ProtoMessage() {}
 
 func (x *ListDir) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[14]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1300,7 +1385,7 @@ func (x *ListDir) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDir.ProtoReflect.Descriptor instead.
 func (*ListDir) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{14}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListDir) GetPath() string {
@@ -1319,7 +1404,7 @@ type DirListing struct {
 
 func (x *DirListing) Reset() {
 	*x = DirListing{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[15]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1331,7 +1416,7 @@ func (x *DirListing) String() string {
 func (*DirListing) ProtoMessage() {}
 
 func (x *DirListing) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[15]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1344,7 +1429,7 @@ func (x *DirListing) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirListing.ProtoReflect.Descriptor instead.
 func (*DirListing) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{15}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DirListing) GetEntries() []*FileInfo {
@@ -1367,7 +1452,7 @@ type NetworkConfig struct {
 
 func (x *NetworkConfig) Reset() {
 	*x = NetworkConfig{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[16]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1379,7 +1464,7 @@ func (x *NetworkConfig) String() string {
 func (*NetworkConfig) ProtoMessage() {}
 
 func (x *NetworkConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[16]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1392,7 +1477,7 @@ func (x *NetworkConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkConfig.ProtoReflect.Descriptor instead.
 func (*NetworkConfig) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{16}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *NetworkConfig) GetInterface() string {
@@ -1439,7 +1524,7 @@ type Configure struct {
 
 func (x *Configure) Reset() {
 	*x = Configure{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[17]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1451,7 +1536,7 @@ func (x *Configure) String() string {
 func (*Configure) ProtoMessage() {}
 
 func (x *Configure) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[17]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1464,7 +1549,7 @@ func (x *Configure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Configure.ProtoReflect.Descriptor instead.
 func (*Configure) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{17}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Configure) GetHostname() string {
@@ -1510,7 +1595,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[18]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1522,7 +1607,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[18]
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1535,7 +1620,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{18}
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{19}
 }
 
 var File_agentcomp_agentd_v1_agentd_proto protoreflect.FileDescriptor
@@ -1572,10 +1657,16 @@ const file_agentcomp_agentd_v1_agentd_proto_rawDesc = "" +
 	"\x05Error\x122\n" +
 	"\x04code\x18\x01 \x01(\x0e2\x1e.agentcomp.agentd.v1.ErrorCodeR\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"\x06\n" +
-	"\x04Ping\"H\n" +
+	"\x04Ping\"\x80\x01\n" +
 	"\x04Pong\x12#\n" +
 	"\ragent_version\x18\x01 \x01(\tR\fagentVersion\x12\x1b\n" +
-	"\tuptime_ms\x18\x02 \x01(\x04R\buptimeMs\"\xd9\x01\n" +
+	"\tuptime_ms\x18\x02 \x01(\x04R\buptimeMs\x126\n" +
+	"\adisplay\x18\x03 \x01(\v2\x1c.agentcomp.agentd.v1.DisplayR\adisplay\"c\n" +
+	"\aDisplay\x12\x14\n" +
+	"\x05width\x18\x01 \x01(\rR\x05width\x12\x16\n" +
+	"\x06height\x18\x02 \x01(\rR\x06height\x12\x14\n" +
+	"\x05ready\x18\x03 \x01(\bR\x05ready\x12\x14\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\"\xd9\x01\n" +
 	"\tExecStart\x12\x12\n" +
 	"\x04argv\x18\x01 \x03(\tR\x04argv\x129\n" +
 	"\x03env\x18\x02 \x03(\v2'.agentcomp.agentd.v1.ExecStart.EnvEntryR\x03env\x12\x10\n" +
@@ -1641,7 +1732,7 @@ const file_agentcomp_agentd_v1_agentd_proto_rawDesc = "" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x05\n" +
-	"\x03Ack*\xd6\x01\n" +
+	"\x03Ack*\xf2\x01\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14ERROR_CODE_NOT_FOUND\x10\x01\x12 \n" +
@@ -1649,7 +1740,8 @@ const file_agentcomp_agentd_v1_agentd_proto_rawDesc = "" +
 	"\x1bERROR_CODE_INVALID_ARGUMENT\x10\x03\x12\x1d\n" +
 	"\x19ERROR_CODE_ALREADY_EXISTS\x10\x04\x12\x18\n" +
 	"\x14ERROR_CODE_TOO_LARGE\x10\x05\x12\x17\n" +
-	"\x13ERROR_CODE_INTERNAL\x10\x06*F\n" +
+	"\x13ERROR_CODE_INTERNAL\x10\x06\x12\x1a\n" +
+	"\x16ERROR_CODE_UNAVAILABLE\x10\a*F\n" +
 	"\x06Stream\x12\x16\n" +
 	"\x12STREAM_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rSTREAM_STDOUT\x10\x01\x12\x11\n" +
@@ -1674,7 +1766,7 @@ func file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP() []byte {
 }
 
 var file_agentcomp_agentd_v1_agentd_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_agentcomp_agentd_v1_agentd_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_agentcomp_agentd_v1_agentd_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_agentcomp_agentd_v1_agentd_proto_goTypes = []any{
 	(ErrorCode)(0),        // 0: agentcomp.agentd.v1.ErrorCode
 	(Stream)(0),           // 1: agentcomp.agentd.v1.Stream
@@ -1683,54 +1775,56 @@ var file_agentcomp_agentd_v1_agentd_proto_goTypes = []any{
 	(*Error)(nil),         // 4: agentcomp.agentd.v1.Error
 	(*Ping)(nil),          // 5: agentcomp.agentd.v1.Ping
 	(*Pong)(nil),          // 6: agentcomp.agentd.v1.Pong
-	(*ExecStart)(nil),     // 7: agentcomp.agentd.v1.ExecStart
-	(*ExecStdin)(nil),     // 8: agentcomp.agentd.v1.ExecStdin
-	(*ExecSignal)(nil),    // 9: agentcomp.agentd.v1.ExecSignal
-	(*ExecOutput)(nil),    // 10: agentcomp.agentd.v1.ExecOutput
-	(*ExecExit)(nil),      // 11: agentcomp.agentd.v1.ExecExit
-	(*ReadFile)(nil),      // 12: agentcomp.agentd.v1.ReadFile
-	(*WriteFile)(nil),     // 13: agentcomp.agentd.v1.WriteFile
-	(*FileData)(nil),      // 14: agentcomp.agentd.v1.FileData
-	(*FileInfo)(nil),      // 15: agentcomp.agentd.v1.FileInfo
-	(*Stat)(nil),          // 16: agentcomp.agentd.v1.Stat
-	(*ListDir)(nil),       // 17: agentcomp.agentd.v1.ListDir
-	(*DirListing)(nil),    // 18: agentcomp.agentd.v1.DirListing
-	(*NetworkConfig)(nil), // 19: agentcomp.agentd.v1.NetworkConfig
-	(*Configure)(nil),     // 20: agentcomp.agentd.v1.Configure
-	(*Ack)(nil),           // 21: agentcomp.agentd.v1.Ack
-	nil,                   // 22: agentcomp.agentd.v1.ExecStart.EnvEntry
-	nil,                   // 23: agentcomp.agentd.v1.Configure.EnvEntry
+	(*Display)(nil),       // 7: agentcomp.agentd.v1.Display
+	(*ExecStart)(nil),     // 8: agentcomp.agentd.v1.ExecStart
+	(*ExecStdin)(nil),     // 9: agentcomp.agentd.v1.ExecStdin
+	(*ExecSignal)(nil),    // 10: agentcomp.agentd.v1.ExecSignal
+	(*ExecOutput)(nil),    // 11: agentcomp.agentd.v1.ExecOutput
+	(*ExecExit)(nil),      // 12: agentcomp.agentd.v1.ExecExit
+	(*ReadFile)(nil),      // 13: agentcomp.agentd.v1.ReadFile
+	(*WriteFile)(nil),     // 14: agentcomp.agentd.v1.WriteFile
+	(*FileData)(nil),      // 15: agentcomp.agentd.v1.FileData
+	(*FileInfo)(nil),      // 16: agentcomp.agentd.v1.FileInfo
+	(*Stat)(nil),          // 17: agentcomp.agentd.v1.Stat
+	(*ListDir)(nil),       // 18: agentcomp.agentd.v1.ListDir
+	(*DirListing)(nil),    // 19: agentcomp.agentd.v1.DirListing
+	(*NetworkConfig)(nil), // 20: agentcomp.agentd.v1.NetworkConfig
+	(*Configure)(nil),     // 21: agentcomp.agentd.v1.Configure
+	(*Ack)(nil),           // 22: agentcomp.agentd.v1.Ack
+	nil,                   // 23: agentcomp.agentd.v1.ExecStart.EnvEntry
+	nil,                   // 24: agentcomp.agentd.v1.Configure.EnvEntry
 }
 var file_agentcomp_agentd_v1_agentd_proto_depIdxs = []int32{
 	4,  // 0: agentcomp.agentd.v1.Frame.error:type_name -> agentcomp.agentd.v1.Error
 	5,  // 1: agentcomp.agentd.v1.Frame.ping:type_name -> agentcomp.agentd.v1.Ping
 	6,  // 2: agentcomp.agentd.v1.Frame.pong:type_name -> agentcomp.agentd.v1.Pong
-	7,  // 3: agentcomp.agentd.v1.Frame.exec_start:type_name -> agentcomp.agentd.v1.ExecStart
-	8,  // 4: agentcomp.agentd.v1.Frame.exec_stdin:type_name -> agentcomp.agentd.v1.ExecStdin
-	9,  // 5: agentcomp.agentd.v1.Frame.exec_signal:type_name -> agentcomp.agentd.v1.ExecSignal
-	10, // 6: agentcomp.agentd.v1.Frame.exec_output:type_name -> agentcomp.agentd.v1.ExecOutput
-	11, // 7: agentcomp.agentd.v1.Frame.exec_exit:type_name -> agentcomp.agentd.v1.ExecExit
-	12, // 8: agentcomp.agentd.v1.Frame.read_file:type_name -> agentcomp.agentd.v1.ReadFile
-	13, // 9: agentcomp.agentd.v1.Frame.write_file:type_name -> agentcomp.agentd.v1.WriteFile
-	14, // 10: agentcomp.agentd.v1.Frame.file_data:type_name -> agentcomp.agentd.v1.FileData
-	15, // 11: agentcomp.agentd.v1.Frame.file_info:type_name -> agentcomp.agentd.v1.FileInfo
-	16, // 12: agentcomp.agentd.v1.Frame.stat:type_name -> agentcomp.agentd.v1.Stat
-	17, // 13: agentcomp.agentd.v1.Frame.list_dir:type_name -> agentcomp.agentd.v1.ListDir
-	18, // 14: agentcomp.agentd.v1.Frame.dir_listing:type_name -> agentcomp.agentd.v1.DirListing
-	20, // 15: agentcomp.agentd.v1.Frame.configure:type_name -> agentcomp.agentd.v1.Configure
-	21, // 16: agentcomp.agentd.v1.Frame.ack:type_name -> agentcomp.agentd.v1.Ack
+	8,  // 3: agentcomp.agentd.v1.Frame.exec_start:type_name -> agentcomp.agentd.v1.ExecStart
+	9,  // 4: agentcomp.agentd.v1.Frame.exec_stdin:type_name -> agentcomp.agentd.v1.ExecStdin
+	10, // 5: agentcomp.agentd.v1.Frame.exec_signal:type_name -> agentcomp.agentd.v1.ExecSignal
+	11, // 6: agentcomp.agentd.v1.Frame.exec_output:type_name -> agentcomp.agentd.v1.ExecOutput
+	12, // 7: agentcomp.agentd.v1.Frame.exec_exit:type_name -> agentcomp.agentd.v1.ExecExit
+	13, // 8: agentcomp.agentd.v1.Frame.read_file:type_name -> agentcomp.agentd.v1.ReadFile
+	14, // 9: agentcomp.agentd.v1.Frame.write_file:type_name -> agentcomp.agentd.v1.WriteFile
+	15, // 10: agentcomp.agentd.v1.Frame.file_data:type_name -> agentcomp.agentd.v1.FileData
+	16, // 11: agentcomp.agentd.v1.Frame.file_info:type_name -> agentcomp.agentd.v1.FileInfo
+	17, // 12: agentcomp.agentd.v1.Frame.stat:type_name -> agentcomp.agentd.v1.Stat
+	18, // 13: agentcomp.agentd.v1.Frame.list_dir:type_name -> agentcomp.agentd.v1.ListDir
+	19, // 14: agentcomp.agentd.v1.Frame.dir_listing:type_name -> agentcomp.agentd.v1.DirListing
+	21, // 15: agentcomp.agentd.v1.Frame.configure:type_name -> agentcomp.agentd.v1.Configure
+	22, // 16: agentcomp.agentd.v1.Frame.ack:type_name -> agentcomp.agentd.v1.Ack
 	0,  // 17: agentcomp.agentd.v1.Error.code:type_name -> agentcomp.agentd.v1.ErrorCode
-	22, // 18: agentcomp.agentd.v1.ExecStart.env:type_name -> agentcomp.agentd.v1.ExecStart.EnvEntry
-	1,  // 19: agentcomp.agentd.v1.ExecOutput.stream:type_name -> agentcomp.agentd.v1.Stream
-	2,  // 20: agentcomp.agentd.v1.FileInfo.type:type_name -> agentcomp.agentd.v1.FileType
-	15, // 21: agentcomp.agentd.v1.DirListing.entries:type_name -> agentcomp.agentd.v1.FileInfo
-	19, // 22: agentcomp.agentd.v1.Configure.network:type_name -> agentcomp.agentd.v1.NetworkConfig
-	23, // 23: agentcomp.agentd.v1.Configure.env:type_name -> agentcomp.agentd.v1.Configure.EnvEntry
-	24, // [24:24] is the sub-list for method output_type
-	24, // [24:24] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	7,  // 18: agentcomp.agentd.v1.Pong.display:type_name -> agentcomp.agentd.v1.Display
+	23, // 19: agentcomp.agentd.v1.ExecStart.env:type_name -> agentcomp.agentd.v1.ExecStart.EnvEntry
+	1,  // 20: agentcomp.agentd.v1.ExecOutput.stream:type_name -> agentcomp.agentd.v1.Stream
+	2,  // 21: agentcomp.agentd.v1.FileInfo.type:type_name -> agentcomp.agentd.v1.FileType
+	16, // 22: agentcomp.agentd.v1.DirListing.entries:type_name -> agentcomp.agentd.v1.FileInfo
+	20, // 23: agentcomp.agentd.v1.Configure.network:type_name -> agentcomp.agentd.v1.NetworkConfig
+	24, // 24: agentcomp.agentd.v1.Configure.env:type_name -> agentcomp.agentd.v1.Configure.EnvEntry
+	25, // [25:25] is the sub-list for method output_type
+	25, // [25:25] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_agentcomp_agentd_v1_agentd_proto_init() }
@@ -1763,7 +1857,7 @@ func file_agentcomp_agentd_v1_agentd_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agentcomp_agentd_v1_agentd_proto_rawDesc), len(file_agentcomp_agentd_v1_agentd_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   21,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

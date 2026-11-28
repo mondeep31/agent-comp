@@ -51,6 +51,9 @@ enum ErrorCode {
   ERROR_CODE_ALREADY_EXISTS = 4;
   ERROR_CODE_TOO_LARGE = 5;
   ERROR_CODE_INTERNAL = 6;
+  // The operation needs something the guest does not have right now, such
+  // as a display that is still starting or has crashed.
+  ERROR_CODE_UNAVAILABLE = 7;
 }
 
 message Error {
@@ -63,6 +66,18 @@ message Ping {}
 message Pong {
   string agent_version = 1;
   uint64 uptime_ms = 2;
+  // Set when the guest was booted with a display (ac.display=WxH).
+  Display display = 3;
+}
+
+// The guest's virtual screen.
+message Display {
+  uint32 width = 1;
+  uint32 height = 2;
+  // True once the X server is up and the desktop session reports ready.
+  bool ready = 3;
+  // Why the display is not ready, when it failed.
+  string error = 4;
 }
 
 message ExecStart {
