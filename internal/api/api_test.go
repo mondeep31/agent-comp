@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	agentdv1 "github.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1"
 	"github.com/mondeep31/agent-comp/internal/api"
 	"github.com/mondeep31/agent-comp/internal/client"
 	"github.com/mondeep31/agent-comp/internal/config"
@@ -49,9 +51,17 @@ func setup(t *testing.T, tweak func(*config.Limits, *api.Options)) *env {
 	if tweak != nil {
 		tweak(&limits, &opts)
 	}
+	src := guesttest.NewSource(dir)
+	src.Displays = map[string]*agentdv1.Display{"desktop": {Width: 1280, Height: 800, Ready: true}}
 	m, err := sandbox.New(sandbox.Options{
-		Source:       guesttest.NewSource(dir),
-		Images:       map[string]sandbox.ImageSpec{"base": {Rootfs: "/images/base.ext4", Shape: golden.Shape{VCPU: cfg.Sandbox.VCPU, MemoryMiB: cfg.Sandbox.MemoryMiB, DiskMiB: cfg.Sandbox.DiskMiB}}},
+		Source: src,
+		Images: map[string]sandbox.ImageSpec{
+			"base": {Rootfs: "/images/base.ext4", Shape: golden.Shape{VCPU: cfg.Sandbox.VCPU, MemoryMiB: cfg.Sandbox.MemoryMiB, DiskMiB: cfg.Sandbox.DiskMiB}},
+			"desktop": {
+				Rootfs: "/images/desktop.ext4", Shape: golden.Shape{VCPU: 1, MemoryMiB: 1024, DiskMiB: 2048},
+				Display: &config.Display{Width: 1280, Height: 800},
+			},
+		},
 		DefaultImage: "base",
 		Defaults:     cfg.Sandbox,
 		Limits:       limits,
@@ -314,5 +324,61 @@ func TestSnapshots(t *testing.T) {
 	}
 	if list, _ := e.alice.ListSnapshots(ctx); len(list) != 0 {
 		t.Fatalf("snapshots after delete = %v", list)
+	}
+}
+
+func TestScreenAPI(t *testing.T) {
+	e := setup(t, nil)
+	ctx := t.Context()
+	imgs, err := e.alice.Images(ctx)
+	if err != nil || len(imgs) != 2 || imgs[1].Name != "desktop" || imgs[1].Display == nil {
+		t.Fatalf("images = %+v, %v", imgs, err)
+	}
+	desk, err := e.alice.Create(ctx, &api.CreateSandboxRequest{Image: "desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desk.Display == nil || desk.MemoryMiB != 1024 {
+		t.Fatalf("desktop = %+v", desk)
+	}
+
+	img, err := e.alice.Screenshot(ctx, desk.ID, sandbox.ScreenshotOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(img.Data))
+	if err != nil || cfg.Width != 1280 || cfg.Height != 800 || img.MIMEType != "image/png" || img.Width != 1280 {
+		t.Fatalf("png %+v %v (%s %dx%d)", cfg, err, img.MIMEType, img.Width, img.Height)
+	}
+	jpg, err := e.alice.Screenshot(ctx, desk.ID, sandbox.ScreenshotOptions{Format: "jpeg", Region: []int{0, 0, 320, 200}})
+	if err != nil || jpg.MIMEType != "image/jpeg" || jpg.Width != 320 {
+		t.Fatalf("jpeg = %s %d, %v", jpg.MIMEType, jpg.Width, err)
+	}
+
+	res, err := e.alice.Computer(ctx, desk.ID, &sandbox.ComputerAction{Action: "left_click", Coordinate: []int{10, 20}, Screenshot: true})
+	if err != nil || res.CursorX != 10 || res.Image == nil || res.Image.MIMEType != "image/png" {
+		t.Fatalf("click = %+v, %v", res, err)
+	}
+
+	var ce *client.Error
+	_, err = e.alice.Computer(ctx, desk.ID, &sandbox.ComputerAction{Action: "fly"})
+	if !errors.As(err, &ce) || ce.Status != http.StatusBadRequest {
+		t.Fatalf("bad action: %v", err)
+	}
+	_, err = e.bob.Screenshot(ctx, desk.ID, sandbox.ScreenshotOptions{})
+	if !errors.As(err, &ce) || ce.Status != http.StatusNotFound {
+		t.Fatalf("bob: %v", err)
+	}
+	base, err := e.alice.Create(ctx, &api.CreateSandboxRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.alice.Screenshot(ctx, base.ID, sandbox.ScreenshotOptions{})
+	if !errors.As(err, &ce) || ce.Status != http.StatusBadRequest {
+		t.Fatalf("headless: %v", err)
+	}
+	_, err = e.alice.Screenshot(ctx, desk.ID, sandbox.ScreenshotOptions{Region: []int{0, 0, 9999, 10}})
+	if !errors.As(err, &ce) || ce.Status != http.StatusBadRequest {
+		t.Fatalf("bad region: %v", err)
 	}
 }

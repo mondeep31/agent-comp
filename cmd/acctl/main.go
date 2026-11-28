@@ -14,6 +14,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -47,6 +49,14 @@ Files:
   cat ID PATH                   print a file
   put ID LOCAL REMOTE           upload a file ("-" reads stdin)
   ls-files ID PATH              list a directory
+
+Screen (images with a display):
+  screenshot [-o FILE] [-format png|jpeg] [-region x0,y0,x1,y1] ID
+                                save a screenshot (default ID.png / ID.jpg)
+  computer ID ACTION [JSON]     run a computer-use action, e.g.
+                                computer ID left_click '{"coordinate":[640,400]}'
+                                computer ID type '{"text":"hello"}'
+                                computer ID key '{"text":"ctrl+l"}'
 
 Snapshots:
   snapshot ID                   snapshot a sandbox
@@ -208,6 +218,35 @@ func run(ctx context.Context, args []string) error {
 			return err
 		}
 		return printJSON(list)
+	case "screenshot":
+		return screenshot(ctx, c, args)
+	case "computer":
+		if len(args) < 2 || len(args) > 3 {
+			return errors.New("usage: acctl computer ID ACTION [JSON]")
+		}
+		a := sandbox.ComputerAction{}
+		if len(args) == 3 {
+			dec := json.NewDecoder(strings.NewReader(args[2]))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&a); err != nil {
+				return fmt.Errorf("parsing action JSON: %w", err)
+			}
+		}
+		a.Action = args[1]
+		res, err := c.Computer(ctx, args[0], &a)
+		if err != nil {
+			return err
+		}
+		if res.Image != nil {
+			// Both parts come from the command line; keep the file in the current directory.
+			name := filepath.Base(args[0] + "-" + a.Action + extension(res.Image.MIMEType))
+			if err := os.WriteFile(name, res.Image.Data, 0o600); err != nil { //nolint:gosec // filepath.Base keeps it in the working directory
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "wrote %s (%dx%d)\n", name, res.Image.Width, res.Image.Height)
+			res.Image = nil
+		}
+		return printJSON(res)
 	case "rm-snapshot":
 		if err := needArgs(args, 1, "rm-snapshot ID"); err != nil {
 			return err
@@ -318,5 +357,54 @@ func put(ctx context.Context, c *client.Client, id, local, remote string) error 
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "wrote %d bytes to %s\n", fe.Size, strings.TrimSpace(fe.Path))
+	return nil
+}
+
+func extension(mime string) string {
+	if mime == "image/jpeg" {
+		return ".jpg"
+	}
+	return ".png"
+}
+
+func screenshot(ctx context.Context, c *client.Client, args []string) error {
+	fs := flag.NewFlagSet("screenshot", flag.ContinueOnError)
+	out := fs.String("o", "", "output file (\"-\" for stdout)")
+	format := fs.String("format", "png", "png or jpeg")
+	quality := fs.Int("quality", 0, "JPEG quality 1-100")
+	region := fs.String("region", "", "x0,y0,x1,y1")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: acctl screenshot [-o FILE] [-format png|jpeg] [-region x0,y0,x1,y1] ID")
+	}
+	id := fs.Arg(0)
+	opts := sandbox.ScreenshotOptions{Format: *format, Quality: *quality}
+	if *region != "" {
+		for _, p := range strings.Split(*region, ",") {
+			n, err := strconv.Atoi(strings.TrimSpace(p))
+			if err != nil {
+				return fmt.Errorf("region: %w", err)
+			}
+			opts.Region = append(opts.Region, n)
+		}
+	}
+	img, err := c.Screenshot(ctx, id, opts)
+	if err != nil {
+		return err
+	}
+	if *out == "-" {
+		_, err := os.Stdout.Write(img.Data)
+		return err
+	}
+	name := *out
+	if name == "" {
+		name = id + extension(img.MIMEType)
+	}
+	if err := os.WriteFile(name, img.Data, 0o600); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "wrote %s (%dx%d, %d bytes)\n", name, img.Width, img.Height, len(img.Data))
 	return nil
 }

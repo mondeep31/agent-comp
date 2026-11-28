@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/mondeep31/agent-comp/internal/sandbox"
 )
@@ -173,4 +174,64 @@ func (s *Server) writeFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, fe)
+}
+
+// screenshot serves the sandbox's screen as an image. Query: format (png or
+// jpeg), quality (1-100) and region (x0,y0,x1,y1).
+func (s *Server) screenshot(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	opts := sandbox.ScreenshotOptions{Format: q.Get("format")}
+	if v := q.Get("quality"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			s.fail(w, r, fmt.Errorf("%w: quality must be a number", sandbox.ErrInvalid))
+			return
+		}
+		opts.Quality = n
+	}
+	if v := q.Get("region"); v != "" {
+		parts := strings.Split(v, ",")
+		opts.Region = make([]int, 0, len(parts))
+		for _, p := range parts {
+			n, err := strconv.Atoi(strings.TrimSpace(p))
+			if err != nil {
+				s.fail(w, r, fmt.Errorf("%w: region must be x0,y0,x1,y1", sandbox.ErrInvalid))
+				return
+			}
+			opts.Region = append(opts.Region, n)
+		}
+	}
+	img, err := s.m.Screenshot(r.Context(), Owner(r.Context()), r.PathValue("id"), opts)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", img.MIMEType)
+	h.Set("Content-Length", strconv.Itoa(len(img.Data)))
+	h.Set("Cache-Control", "no-store")
+	// The bytes come from the guest, which is untrusted: browsers must treat
+	// them as the image type the server chose, never as a document.
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	h.Set("X-Screen-Width", strconv.Itoa(img.Width))
+	h.Set("X-Screen-Height", strconv.Itoa(img.Height))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(img.Data) //nolint:gosec // served as image/png or image/jpeg with nosniff and a sandbox CSP
+}
+
+// computer runs one computer-use action. Any screenshot comes back base64
+// encoded in image.data.
+func (s *Server) computer(w http.ResponseWriter, r *http.Request) {
+	var req sandbox.ComputerAction
+	if err := decode(r, &req); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	res, err := s.m.Computer(r.Context(), Owner(r.Context()), r.PathValue("id"), &req)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }

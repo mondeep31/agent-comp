@@ -291,3 +291,39 @@ func pumpStdin(ctx context.Context, conn *websocket.Conn, r io.Reader) {
 		}
 	}
 }
+
+// Screenshot captures a sandbox's screen.
+func (c *Client) Screenshot(ctx context.Context, id string, opts sandbox.ScreenshotOptions) (*sandbox.Image, error) {
+	q := url.Values{}
+	if opts.Format != "" {
+		q.Set("format", opts.Format)
+	}
+	if opts.Quality != 0 {
+		q.Set("quality", strconv.Itoa(opts.Quality))
+	}
+	if opts.Region != nil {
+		parts := make([]string, len(opts.Region))
+		for i, n := range opts.Region {
+			parts[i] = strconv.Itoa(n)
+		}
+		q.Set("region", strings.Join(parts, ","))
+	}
+	resp, err := c.do(ctx, http.MethodGet, sb(id, "/screenshot"), q, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	if err != nil {
+		return nil, err
+	}
+	w, _ := strconv.Atoi(resp.Header.Get("X-Screen-Width"))
+	h, _ := strconv.Atoi(resp.Header.Get("X-Screen-Height"))
+	return &sandbox.Image{MIMEType: resp.Header.Get("Content-Type"), Width: w, Height: h, Data: data}, nil
+}
+
+// Computer runs one computer-use action.
+func (c *Client) Computer(ctx context.Context, id string, a *sandbox.ComputerAction) (*sandbox.ComputerResult, error) {
+	var out sandbox.ComputerResult
+	return &out, c.json(ctx, http.MethodPost, sb(id, "/computer"), nil, a, &out)
+}
