@@ -191,6 +191,160 @@ func (FileType) EnumDescriptor() ([]byte, []int) {
 	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{2}
 }
 
+type ImageFormat int32
+
+const (
+	ImageFormat_IMAGE_FORMAT_UNSPECIFIED ImageFormat = 0
+	ImageFormat_IMAGE_FORMAT_PNG         ImageFormat = 1
+	ImageFormat_IMAGE_FORMAT_JPEG        ImageFormat = 2
+)
+
+// Enum value maps for ImageFormat.
+var (
+	ImageFormat_name = map[int32]string{
+		0: "IMAGE_FORMAT_UNSPECIFIED",
+		1: "IMAGE_FORMAT_PNG",
+		2: "IMAGE_FORMAT_JPEG",
+	}
+	ImageFormat_value = map[string]int32{
+		"IMAGE_FORMAT_UNSPECIFIED": 0,
+		"IMAGE_FORMAT_PNG":         1,
+		"IMAGE_FORMAT_JPEG":        2,
+	}
+)
+
+func (x ImageFormat) Enum() *ImageFormat {
+	p := new(ImageFormat)
+	*p = x
+	return p
+}
+
+func (x ImageFormat) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ImageFormat) Descriptor() protoreflect.EnumDescriptor {
+	return file_agentcomp_agentd_v1_agentd_proto_enumTypes[3].Descriptor()
+}
+
+func (ImageFormat) Type() protoreflect.EnumType {
+	return &file_agentcomp_agentd_v1_agentd_proto_enumTypes[3]
+}
+
+func (x ImageFormat) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ImageFormat.Descriptor instead.
+func (ImageFormat) EnumDescriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{3}
+}
+
+type Action int32
+
+const (
+	Action_ACTION_UNSPECIFIED Action = 0
+	// Press and release (click or tap).
+	Action_ACTION_TAP     Action = 1
+	Action_ACTION_PRESS   Action = 2
+	Action_ACTION_RELEASE Action = 3
+)
+
+// Enum value maps for Action.
+var (
+	Action_name = map[int32]string{
+		0: "ACTION_UNSPECIFIED",
+		1: "ACTION_TAP",
+		2: "ACTION_PRESS",
+		3: "ACTION_RELEASE",
+	}
+	Action_value = map[string]int32{
+		"ACTION_UNSPECIFIED": 0,
+		"ACTION_TAP":         1,
+		"ACTION_PRESS":       2,
+		"ACTION_RELEASE":     3,
+	}
+)
+
+func (x Action) Enum() *Action {
+	p := new(Action)
+	*p = x
+	return p
+}
+
+func (x Action) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Action) Descriptor() protoreflect.EnumDescriptor {
+	return file_agentcomp_agentd_v1_agentd_proto_enumTypes[4].Descriptor()
+}
+
+func (Action) Type() protoreflect.EnumType {
+	return &file_agentcomp_agentd_v1_agentd_proto_enumTypes[4]
+}
+
+func (x Action) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Action.Descriptor instead.
+func (Action) EnumDescriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{4}
+}
+
+type Button int32
+
+const (
+	Button_BUTTON_UNSPECIFIED Button = 0
+	Button_BUTTON_LEFT        Button = 1
+	Button_BUTTON_MIDDLE      Button = 2
+	Button_BUTTON_RIGHT       Button = 3
+)
+
+// Enum value maps for Button.
+var (
+	Button_name = map[int32]string{
+		0: "BUTTON_UNSPECIFIED",
+		1: "BUTTON_LEFT",
+		2: "BUTTON_MIDDLE",
+		3: "BUTTON_RIGHT",
+	}
+	Button_value = map[string]int32{
+		"BUTTON_UNSPECIFIED": 0,
+		"BUTTON_LEFT":        1,
+		"BUTTON_MIDDLE":      2,
+		"BUTTON_RIGHT":       3,
+	}
+)
+
+func (x Button) Enum() *Button {
+	p := new(Button)
+	*p = x
+	return p
+}
+
+func (x Button) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Button) Descriptor() protoreflect.EnumDescriptor {
+	return file_agentcomp_agentd_v1_agentd_proto_enumTypes[5].Descriptor()
+}
+
+func (Button) Type() protoreflect.EnumType {
+	return &file_agentcomp_agentd_v1_agentd_proto_enumTypes[5]
+}
+
+func (x Button) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Button.Descriptor instead.
+func (Button) EnumDescriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{5}
+}
+
 // Wire format between the host (acd) and the guest agent (agentd) over vsock.
 //
 // Every message on a connection is a Frame, prefixed with its encoded length
@@ -209,6 +363,11 @@ func (FileType) EnumDescriptor() ([]byte, []int) {
 //	Stat:      host Stat                    -> guest FileInfo
 //	ListDir:   host ListDir                 -> guest DirListing
 //	Configure: host Configure               -> guest Ack
+//	Screenshot: host Screenshot             -> guest ScreenshotInfo, FileData* (last has eof)
+//	Input:     host Input                   -> guest InputResult
+//
+// Screenshot and Input need a display; a headless guest, or one whose
+// display is not ready, answers ERROR_CODE_UNAVAILABLE.
 type Frame struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Kind:
@@ -230,6 +389,10 @@ type Frame struct {
 	//	*Frame_DirListing
 	//	*Frame_Configure
 	//	*Frame_Ack
+	//	*Frame_Screenshot
+	//	*Frame_ScreenshotInfo
+	//	*Frame_Input
+	//	*Frame_InputResult
 	Kind          isFrame_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -425,6 +588,42 @@ func (x *Frame) GetAck() *Ack {
 	return nil
 }
 
+func (x *Frame) GetScreenshot() *Screenshot {
+	if x != nil {
+		if x, ok := x.Kind.(*Frame_Screenshot); ok {
+			return x.Screenshot
+		}
+	}
+	return nil
+}
+
+func (x *Frame) GetScreenshotInfo() *ScreenshotInfo {
+	if x != nil {
+		if x, ok := x.Kind.(*Frame_ScreenshotInfo); ok {
+			return x.ScreenshotInfo
+		}
+	}
+	return nil
+}
+
+func (x *Frame) GetInput() *Input {
+	if x != nil {
+		if x, ok := x.Kind.(*Frame_Input); ok {
+			return x.Input
+		}
+	}
+	return nil
+}
+
+func (x *Frame) GetInputResult() *InputResult {
+	if x != nil {
+		if x, ok := x.Kind.(*Frame_InputResult); ok {
+			return x.InputResult
+		}
+	}
+	return nil
+}
+
 type isFrame_Kind interface {
 	isFrame_Kind()
 }
@@ -497,6 +696,22 @@ type Frame_Ack struct {
 	Ack *Ack `protobuf:"bytes,17,opt,name=ack,proto3,oneof"`
 }
 
+type Frame_Screenshot struct {
+	Screenshot *Screenshot `protobuf:"bytes,18,opt,name=screenshot,proto3,oneof"`
+}
+
+type Frame_ScreenshotInfo struct {
+	ScreenshotInfo *ScreenshotInfo `protobuf:"bytes,19,opt,name=screenshot_info,json=screenshotInfo,proto3,oneof"`
+}
+
+type Frame_Input struct {
+	Input *Input `protobuf:"bytes,20,opt,name=input,proto3,oneof"`
+}
+
+type Frame_InputResult struct {
+	InputResult *InputResult `protobuf:"bytes,21,opt,name=input_result,json=inputResult,proto3,oneof"`
+}
+
 func (*Frame_Error) isFrame_Kind() {}
 
 func (*Frame_Ping) isFrame_Kind() {}
@@ -530,6 +745,14 @@ func (*Frame_DirListing) isFrame_Kind() {}
 func (*Frame_Configure) isFrame_Kind() {}
 
 func (*Frame_Ack) isFrame_Kind() {}
+
+func (*Frame_Screenshot) isFrame_Kind() {}
+
+func (*Frame_ScreenshotInfo) isFrame_Kind() {}
+
+func (*Frame_Input) isFrame_Kind() {}
+
+func (*Frame_InputResult) isFrame_Kind() {}
 
 type Error struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1623,11 +1846,788 @@ func (*Ack) Descriptor() ([]byte, []int) {
 	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{19}
 }
 
+// A rectangle in screen pixels.
+type Region struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	X             uint32                 `protobuf:"varint,1,opt,name=x,proto3" json:"x,omitempty"`
+	Y             uint32                 `protobuf:"varint,2,opt,name=y,proto3" json:"y,omitempty"`
+	Width         uint32                 `protobuf:"varint,3,opt,name=width,proto3" json:"width,omitempty"`
+	Height        uint32                 `protobuf:"varint,4,opt,name=height,proto3" json:"height,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Region) Reset() {
+	*x = Region{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Region) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Region) ProtoMessage() {}
+
+func (x *Region) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Region.ProtoReflect.Descriptor instead.
+func (*Region) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *Region) GetX() uint32 {
+	if x != nil {
+		return x.X
+	}
+	return 0
+}
+
+func (x *Region) GetY() uint32 {
+	if x != nil {
+		return x.Y
+	}
+	return 0
+}
+
+func (x *Region) GetWidth() uint32 {
+	if x != nil {
+		return x.Width
+	}
+	return 0
+}
+
+func (x *Region) GetHeight() uint32 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+type Screenshot struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Unspecified means PNG.
+	Format ImageFormat `protobuf:"varint,1,opt,name=format,proto3,enum=agentcomp.agentd.v1.ImageFormat" json:"format,omitempty"`
+	// JPEG quality 1-100; 0 means 80.
+	Quality uint32 `protobuf:"varint,2,opt,name=quality,proto3" json:"quality,omitempty"`
+	// Captures part of the screen; unset means all of it.
+	Region        *Region `protobuf:"bytes,3,opt,name=region,proto3" json:"region,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Screenshot) Reset() {
+	*x = Screenshot{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Screenshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Screenshot) ProtoMessage() {}
+
+func (x *Screenshot) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Screenshot.ProtoReflect.Descriptor instead.
+func (*Screenshot) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *Screenshot) GetFormat() ImageFormat {
+	if x != nil {
+		return x.Format
+	}
+	return ImageFormat_IMAGE_FORMAT_UNSPECIFIED
+}
+
+func (x *Screenshot) GetQuality() uint32 {
+	if x != nil {
+		return x.Quality
+	}
+	return 0
+}
+
+func (x *Screenshot) GetRegion() *Region {
+	if x != nil {
+		return x.Region
+	}
+	return nil
+}
+
+// Precedes the encoded image, which follows as FileData chunks.
+type ScreenshotInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Width         uint32                 `protobuf:"varint,1,opt,name=width,proto3" json:"width,omitempty"`
+	Height        uint32                 `protobuf:"varint,2,opt,name=height,proto3" json:"height,omitempty"`
+	Format        ImageFormat            `protobuf:"varint,3,opt,name=format,proto3,enum=agentcomp.agentd.v1.ImageFormat" json:"format,omitempty"`
+	Size          uint64                 `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScreenshotInfo) Reset() {
+	*x = ScreenshotInfo{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScreenshotInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScreenshotInfo) ProtoMessage() {}
+
+func (x *ScreenshotInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScreenshotInfo.ProtoReflect.Descriptor instead.
+func (*ScreenshotInfo) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ScreenshotInfo) GetWidth() uint32 {
+	if x != nil {
+		return x.Width
+	}
+	return 0
+}
+
+func (x *ScreenshotInfo) GetHeight() uint32 {
+	if x != nil {
+		return x.Height
+	}
+	return 0
+}
+
+func (x *ScreenshotInfo) GetFormat() ImageFormat {
+	if x != nil {
+		return x.Format
+	}
+	return ImageFormat_IMAGE_FORMAT_UNSPECIFIED
+}
+
+func (x *ScreenshotInfo) GetSize() uint64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+// A batch of input events, applied in order. Keys and buttons still held at
+// the end of a batch, or when an event fails, are released, unless they were
+// pressed with ACTION_PRESS and the batch ended normally.
+type Input struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Events        []*InputEvent          `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Input) Reset() {
+	*x = Input{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Input) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Input) ProtoMessage() {}
+
+func (x *Input) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Input.ProtoReflect.Descriptor instead.
+func (*Input) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *Input) GetEvents() []*InputEvent {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+type InputEvent struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Kind:
+	//
+	//	*InputEvent_Move
+	//	*InputEvent_Button
+	//	*InputEvent_Scroll
+	//	*InputEvent_Key
+	//	*InputEvent_Text
+	//	*InputEvent_Delay
+	Kind          isInputEvent_Kind `protobuf_oneof:"kind"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InputEvent) Reset() {
+	*x = InputEvent{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InputEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InputEvent) ProtoMessage() {}
+
+func (x *InputEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InputEvent.ProtoReflect.Descriptor instead.
+func (*InputEvent) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *InputEvent) GetKind() isInputEvent_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return nil
+}
+
+func (x *InputEvent) GetMove() *PointerMove {
+	if x != nil {
+		if x, ok := x.Kind.(*InputEvent_Move); ok {
+			return x.Move
+		}
+	}
+	return nil
+}
+
+func (x *InputEvent) GetButton() *PointerButton {
+	if x != nil {
+		if x, ok := x.Kind.(*InputEvent_Button); ok {
+			return x.Button
+		}
+	}
+	return nil
+}
+
+func (x *InputEvent) GetScroll() *Scroll {
+	if x != nil {
+		if x, ok := x.Kind.(*InputEvent_Scroll); ok {
+			return x.Scroll
+		}
+	}
+	return nil
+}
+
+func (x *InputEvent) GetKey() *Key {
+	if x != nil {
+		if x, ok := x.Kind.(*InputEvent_Key); ok {
+			return x.Key
+		}
+	}
+	return nil
+}
+
+func (x *InputEvent) GetText() *Text {
+	if x != nil {
+		if x, ok := x.Kind.(*InputEvent_Text); ok {
+			return x.Text
+		}
+	}
+	return nil
+}
+
+func (x *InputEvent) GetDelay() *Delay {
+	if x != nil {
+		if x, ok := x.Kind.(*InputEvent_Delay); ok {
+			return x.Delay
+		}
+	}
+	return nil
+}
+
+type isInputEvent_Kind interface {
+	isInputEvent_Kind()
+}
+
+type InputEvent_Move struct {
+	Move *PointerMove `protobuf:"bytes,1,opt,name=move,proto3,oneof"`
+}
+
+type InputEvent_Button struct {
+	Button *PointerButton `protobuf:"bytes,2,opt,name=button,proto3,oneof"`
+}
+
+type InputEvent_Scroll struct {
+	Scroll *Scroll `protobuf:"bytes,3,opt,name=scroll,proto3,oneof"`
+}
+
+type InputEvent_Key struct {
+	Key *Key `protobuf:"bytes,4,opt,name=key,proto3,oneof"`
+}
+
+type InputEvent_Text struct {
+	Text *Text `protobuf:"bytes,5,opt,name=text,proto3,oneof"`
+}
+
+type InputEvent_Delay struct {
+	Delay *Delay `protobuf:"bytes,6,opt,name=delay,proto3,oneof"`
+}
+
+func (*InputEvent_Move) isInputEvent_Kind() {}
+
+func (*InputEvent_Button) isInputEvent_Kind() {}
+
+func (*InputEvent_Scroll) isInputEvent_Kind() {}
+
+func (*InputEvent_Key) isInputEvent_Kind() {}
+
+func (*InputEvent_Text) isInputEvent_Kind() {}
+
+func (*InputEvent_Delay) isInputEvent_Kind() {}
+
+type PointerMove struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	X             int32                  `protobuf:"varint,1,opt,name=x,proto3" json:"x,omitempty"`
+	Y             int32                  `protobuf:"varint,2,opt,name=y,proto3" json:"y,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PointerMove) Reset() {
+	*x = PointerMove{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PointerMove) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PointerMove) ProtoMessage() {}
+
+func (x *PointerMove) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PointerMove.ProtoReflect.Descriptor instead.
+func (*PointerMove) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *PointerMove) GetX() int32 {
+	if x != nil {
+		return x.X
+	}
+	return 0
+}
+
+func (x *PointerMove) GetY() int32 {
+	if x != nil {
+		return x.Y
+	}
+	return 0
+}
+
+type PointerButton struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Button Button                 `protobuf:"varint,1,opt,name=button,proto3,enum=agentcomp.agentd.v1.Button" json:"button,omitempty"`
+	// Unspecified means TAP.
+	Action Action `protobuf:"varint,2,opt,name=action,proto3,enum=agentcomp.agentd.v1.Action" json:"action,omitempty"`
+	// Taps in a row, e.g. 2 for a double click; 0 means 1.
+	Count         uint32 `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PointerButton) Reset() {
+	*x = PointerButton{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PointerButton) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PointerButton) ProtoMessage() {}
+
+func (x *PointerButton) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PointerButton.ProtoReflect.Descriptor instead.
+func (*PointerButton) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *PointerButton) GetButton() Button {
+	if x != nil {
+		return x.Button
+	}
+	return Button_BUTTON_UNSPECIFIED
+}
+
+func (x *PointerButton) GetAction() Action {
+	if x != nil {
+		return x.Action
+	}
+	return Action_ACTION_UNSPECIFIED
+}
+
+func (x *PointerButton) GetCount() uint32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+// Wheel clicks; positive dy scrolls down, positive dx scrolls right.
+type Scroll struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Dx            int32                  `protobuf:"varint,1,opt,name=dx,proto3" json:"dx,omitempty"`
+	Dy            int32                  `protobuf:"varint,2,opt,name=dy,proto3" json:"dy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Scroll) Reset() {
+	*x = Scroll{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Scroll) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Scroll) ProtoMessage() {}
+
+func (x *Scroll) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Scroll.ProtoReflect.Descriptor instead.
+func (*Scroll) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *Scroll) GetDx() int32 {
+	if x != nil {
+		return x.Dx
+	}
+	return 0
+}
+
+func (x *Scroll) GetDy() int32 {
+	if x != nil {
+		return x.Dy
+	}
+	return 0
+}
+
+// A key or chord such as "Return", "ctrl+l" or "ctrl+shift+Tab", by X keysym
+// name. Modifiers are pressed in order and released in reverse.
+type Key struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Keys  string                 `protobuf:"bytes,1,opt,name=keys,proto3" json:"keys,omitempty"`
+	// Unspecified means TAP.
+	Action Action `protobuf:"varint,2,opt,name=action,proto3,enum=agentcomp.agentd.v1.Action" json:"action,omitempty"`
+	// Taps in a row; 0 means 1.
+	Count         uint32 `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Key) Reset() {
+	*x = Key{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Key) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Key) ProtoMessage() {}
+
+func (x *Key) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Key.ProtoReflect.Descriptor instead.
+func (*Key) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *Key) GetKeys() string {
+	if x != nil {
+		return x.Keys
+	}
+	return ""
+}
+
+func (x *Key) GetAction() Action {
+	if x != nil {
+		return x.Action
+	}
+	return Action_ACTION_UNSPECIFIED
+}
+
+func (x *Key) GetCount() uint32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+// Types Unicode text, one character at a time.
+type Text struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Text  string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	// Pause between characters; 0 means none.
+	DelayMs       uint32 `protobuf:"varint,2,opt,name=delay_ms,json=delayMs,proto3" json:"delay_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Text) Reset() {
+	*x = Text{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Text) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Text) ProtoMessage() {}
+
+func (x *Text) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Text.ProtoReflect.Descriptor instead.
+func (*Text) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *Text) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *Text) GetDelayMs() uint32 {
+	if x != nil {
+		return x.DelayMs
+	}
+	return 0
+}
+
+type Delay struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ms            uint32                 `protobuf:"varint,1,opt,name=ms,proto3" json:"ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Delay) Reset() {
+	*x = Delay{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Delay) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Delay) ProtoMessage() {}
+
+func (x *Delay) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Delay.ProtoReflect.Descriptor instead.
+func (*Delay) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *Delay) GetMs() uint32 {
+	if x != nil {
+		return x.Ms
+	}
+	return 0
+}
+
+type InputResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Pointer position after the batch.
+	CursorX       int32 `protobuf:"varint,1,opt,name=cursor_x,json=cursorX,proto3" json:"cursor_x,omitempty"`
+	CursorY       int32 `protobuf:"varint,2,opt,name=cursor_y,json=cursorY,proto3" json:"cursor_y,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InputResult) Reset() {
+	*x = InputResult{}
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InputResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InputResult) ProtoMessage() {}
+
+func (x *InputResult) ProtoReflect() protoreflect.Message {
+	mi := &file_agentcomp_agentd_v1_agentd_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InputResult.ProtoReflect.Descriptor instead.
+func (*InputResult) Descriptor() ([]byte, []int) {
+	return file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *InputResult) GetCursorX() int32 {
+	if x != nil {
+		return x.CursorX
+	}
+	return 0
+}
+
+func (x *InputResult) GetCursorY() int32 {
+	if x != nil {
+		return x.CursorY
+	}
+	return 0
+}
+
 var File_agentcomp_agentd_v1_agentd_proto protoreflect.FileDescriptor
 
 const file_agentcomp_agentd_v1_agentd_proto_rawDesc = "" +
 	"\n" +
-	" agentcomp/agentd/v1/agentd.proto\x12\x13agentcomp.agentd.v1\"\x86\b\n" +
+	" agentcomp/agentd/v1/agentd.proto\x12\x13agentcomp.agentd.v1\"\x94\n" +
+	"\n" +
 	"\x05Frame\x122\n" +
 	"\x05error\x18\x01 \x01(\v2\x1a.agentcomp.agentd.v1.ErrorH\x00R\x05error\x12/\n" +
 	"\x04ping\x18\x02 \x01(\v2\x19.agentcomp.agentd.v1.PingH\x00R\x04ping\x12/\n" +
@@ -1652,7 +2652,13 @@ const file_agentcomp_agentd_v1_agentd_proto_rawDesc = "" +
 	"\vdir_listing\x18\x0f \x01(\v2\x1f.agentcomp.agentd.v1.DirListingH\x00R\n" +
 	"dirListing\x12>\n" +
 	"\tconfigure\x18\x10 \x01(\v2\x1e.agentcomp.agentd.v1.ConfigureH\x00R\tconfigure\x12,\n" +
-	"\x03ack\x18\x11 \x01(\v2\x18.agentcomp.agentd.v1.AckH\x00R\x03ackB\x06\n" +
+	"\x03ack\x18\x11 \x01(\v2\x18.agentcomp.agentd.v1.AckH\x00R\x03ack\x12A\n" +
+	"\n" +
+	"screenshot\x18\x12 \x01(\v2\x1f.agentcomp.agentd.v1.ScreenshotH\x00R\n" +
+	"screenshot\x12N\n" +
+	"\x0fscreenshot_info\x18\x13 \x01(\v2#.agentcomp.agentd.v1.ScreenshotInfoH\x00R\x0escreenshotInfo\x122\n" +
+	"\x05input\x18\x14 \x01(\v2\x1a.agentcomp.agentd.v1.InputH\x00R\x05input\x12E\n" +
+	"\finput_result\x18\x15 \x01(\v2 .agentcomp.agentd.v1.InputResultH\x00R\vinputResultB\x06\n" +
 	"\x04kind\"U\n" +
 	"\x05Error\x122\n" +
 	"\x04code\x18\x01 \x01(\x0e2\x1e.agentcomp.agentd.v1.ErrorCodeR\x04code\x12\x18\n" +
@@ -1732,7 +2738,55 @@ const file_agentcomp_agentd_v1_agentd_proto_rawDesc = "" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x05\n" +
-	"\x03Ack*\xf2\x01\n" +
+	"\x03Ack\"R\n" +
+	"\x06Region\x12\f\n" +
+	"\x01x\x18\x01 \x01(\rR\x01x\x12\f\n" +
+	"\x01y\x18\x02 \x01(\rR\x01y\x12\x14\n" +
+	"\x05width\x18\x03 \x01(\rR\x05width\x12\x16\n" +
+	"\x06height\x18\x04 \x01(\rR\x06height\"\x95\x01\n" +
+	"\n" +
+	"Screenshot\x128\n" +
+	"\x06format\x18\x01 \x01(\x0e2 .agentcomp.agentd.v1.ImageFormatR\x06format\x12\x18\n" +
+	"\aquality\x18\x02 \x01(\rR\aquality\x123\n" +
+	"\x06region\x18\x03 \x01(\v2\x1b.agentcomp.agentd.v1.RegionR\x06region\"\x8c\x01\n" +
+	"\x0eScreenshotInfo\x12\x14\n" +
+	"\x05width\x18\x01 \x01(\rR\x05width\x12\x16\n" +
+	"\x06height\x18\x02 \x01(\rR\x06height\x128\n" +
+	"\x06format\x18\x03 \x01(\x0e2 .agentcomp.agentd.v1.ImageFormatR\x06format\x12\x12\n" +
+	"\x04size\x18\x04 \x01(\x04R\x04size\"@\n" +
+	"\x05Input\x127\n" +
+	"\x06events\x18\x01 \x03(\v2\x1f.agentcomp.agentd.v1.InputEventR\x06events\"\xd4\x02\n" +
+	"\n" +
+	"InputEvent\x126\n" +
+	"\x04move\x18\x01 \x01(\v2 .agentcomp.agentd.v1.PointerMoveH\x00R\x04move\x12<\n" +
+	"\x06button\x18\x02 \x01(\v2\".agentcomp.agentd.v1.PointerButtonH\x00R\x06button\x125\n" +
+	"\x06scroll\x18\x03 \x01(\v2\x1b.agentcomp.agentd.v1.ScrollH\x00R\x06scroll\x12,\n" +
+	"\x03key\x18\x04 \x01(\v2\x18.agentcomp.agentd.v1.KeyH\x00R\x03key\x12/\n" +
+	"\x04text\x18\x05 \x01(\v2\x19.agentcomp.agentd.v1.TextH\x00R\x04text\x122\n" +
+	"\x05delay\x18\x06 \x01(\v2\x1a.agentcomp.agentd.v1.DelayH\x00R\x05delayB\x06\n" +
+	"\x04kind\")\n" +
+	"\vPointerMove\x12\f\n" +
+	"\x01x\x18\x01 \x01(\x05R\x01x\x12\f\n" +
+	"\x01y\x18\x02 \x01(\x05R\x01y\"\x8f\x01\n" +
+	"\rPointerButton\x123\n" +
+	"\x06button\x18\x01 \x01(\x0e2\x1b.agentcomp.agentd.v1.ButtonR\x06button\x123\n" +
+	"\x06action\x18\x02 \x01(\x0e2\x1b.agentcomp.agentd.v1.ActionR\x06action\x12\x14\n" +
+	"\x05count\x18\x03 \x01(\rR\x05count\"(\n" +
+	"\x06Scroll\x12\x0e\n" +
+	"\x02dx\x18\x01 \x01(\x05R\x02dx\x12\x0e\n" +
+	"\x02dy\x18\x02 \x01(\x05R\x02dy\"d\n" +
+	"\x03Key\x12\x12\n" +
+	"\x04keys\x18\x01 \x01(\tR\x04keys\x123\n" +
+	"\x06action\x18\x02 \x01(\x0e2\x1b.agentcomp.agentd.v1.ActionR\x06action\x12\x14\n" +
+	"\x05count\x18\x03 \x01(\rR\x05count\"5\n" +
+	"\x04Text\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12\x19\n" +
+	"\bdelay_ms\x18\x02 \x01(\rR\adelayMs\"\x17\n" +
+	"\x05Delay\x12\x0e\n" +
+	"\x02ms\x18\x01 \x01(\rR\x02ms\"C\n" +
+	"\vInputResult\x12\x19\n" +
+	"\bcursor_x\x18\x01 \x01(\x05R\acursorX\x12\x19\n" +
+	"\bcursor_y\x18\x02 \x01(\x05R\acursorY*\xf2\x01\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14ERROR_CODE_NOT_FOUND\x10\x01\x12 \n" +
@@ -1751,7 +2805,22 @@ const file_agentcomp_agentd_v1_agentd_proto_rawDesc = "" +
 	"\x0eFILE_TYPE_FILE\x10\x01\x12\x11\n" +
 	"\rFILE_TYPE_DIR\x10\x02\x12\x15\n" +
 	"\x11FILE_TYPE_SYMLINK\x10\x03\x12\x13\n" +
-	"\x0fFILE_TYPE_OTHER\x10\x04BEZCgithub.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1;agentdv1b\x06proto3"
+	"\x0fFILE_TYPE_OTHER\x10\x04*X\n" +
+	"\vImageFormat\x12\x1c\n" +
+	"\x18IMAGE_FORMAT_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10IMAGE_FORMAT_PNG\x10\x01\x12\x15\n" +
+	"\x11IMAGE_FORMAT_JPEG\x10\x02*V\n" +
+	"\x06Action\x12\x16\n" +
+	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x0e\n" +
+	"\n" +
+	"ACTION_TAP\x10\x01\x12\x10\n" +
+	"\fACTION_PRESS\x10\x02\x12\x12\n" +
+	"\x0eACTION_RELEASE\x10\x03*V\n" +
+	"\x06Button\x12\x16\n" +
+	"\x12BUTTON_UNSPECIFIED\x10\x00\x12\x0f\n" +
+	"\vBUTTON_LEFT\x10\x01\x12\x11\n" +
+	"\rBUTTON_MIDDLE\x10\x02\x12\x10\n" +
+	"\fBUTTON_RIGHT\x10\x03BEZCgithub.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1;agentdv1b\x06proto3"
 
 var (
 	file_agentcomp_agentd_v1_agentd_proto_rawDescOnce sync.Once
@@ -1765,66 +2834,98 @@ func file_agentcomp_agentd_v1_agentd_proto_rawDescGZIP() []byte {
 	return file_agentcomp_agentd_v1_agentd_proto_rawDescData
 }
 
-var file_agentcomp_agentd_v1_agentd_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_agentcomp_agentd_v1_agentd_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_agentcomp_agentd_v1_agentd_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_agentcomp_agentd_v1_agentd_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_agentcomp_agentd_v1_agentd_proto_goTypes = []any{
-	(ErrorCode)(0),        // 0: agentcomp.agentd.v1.ErrorCode
-	(Stream)(0),           // 1: agentcomp.agentd.v1.Stream
-	(FileType)(0),         // 2: agentcomp.agentd.v1.FileType
-	(*Frame)(nil),         // 3: agentcomp.agentd.v1.Frame
-	(*Error)(nil),         // 4: agentcomp.agentd.v1.Error
-	(*Ping)(nil),          // 5: agentcomp.agentd.v1.Ping
-	(*Pong)(nil),          // 6: agentcomp.agentd.v1.Pong
-	(*Display)(nil),       // 7: agentcomp.agentd.v1.Display
-	(*ExecStart)(nil),     // 8: agentcomp.agentd.v1.ExecStart
-	(*ExecStdin)(nil),     // 9: agentcomp.agentd.v1.ExecStdin
-	(*ExecSignal)(nil),    // 10: agentcomp.agentd.v1.ExecSignal
-	(*ExecOutput)(nil),    // 11: agentcomp.agentd.v1.ExecOutput
-	(*ExecExit)(nil),      // 12: agentcomp.agentd.v1.ExecExit
-	(*ReadFile)(nil),      // 13: agentcomp.agentd.v1.ReadFile
-	(*WriteFile)(nil),     // 14: agentcomp.agentd.v1.WriteFile
-	(*FileData)(nil),      // 15: agentcomp.agentd.v1.FileData
-	(*FileInfo)(nil),      // 16: agentcomp.agentd.v1.FileInfo
-	(*Stat)(nil),          // 17: agentcomp.agentd.v1.Stat
-	(*ListDir)(nil),       // 18: agentcomp.agentd.v1.ListDir
-	(*DirListing)(nil),    // 19: agentcomp.agentd.v1.DirListing
-	(*NetworkConfig)(nil), // 20: agentcomp.agentd.v1.NetworkConfig
-	(*Configure)(nil),     // 21: agentcomp.agentd.v1.Configure
-	(*Ack)(nil),           // 22: agentcomp.agentd.v1.Ack
-	nil,                   // 23: agentcomp.agentd.v1.ExecStart.EnvEntry
-	nil,                   // 24: agentcomp.agentd.v1.Configure.EnvEntry
+	(ErrorCode)(0),         // 0: agentcomp.agentd.v1.ErrorCode
+	(Stream)(0),            // 1: agentcomp.agentd.v1.Stream
+	(FileType)(0),          // 2: agentcomp.agentd.v1.FileType
+	(ImageFormat)(0),       // 3: agentcomp.agentd.v1.ImageFormat
+	(Action)(0),            // 4: agentcomp.agentd.v1.Action
+	(Button)(0),            // 5: agentcomp.agentd.v1.Button
+	(*Frame)(nil),          // 6: agentcomp.agentd.v1.Frame
+	(*Error)(nil),          // 7: agentcomp.agentd.v1.Error
+	(*Ping)(nil),           // 8: agentcomp.agentd.v1.Ping
+	(*Pong)(nil),           // 9: agentcomp.agentd.v1.Pong
+	(*Display)(nil),        // 10: agentcomp.agentd.v1.Display
+	(*ExecStart)(nil),      // 11: agentcomp.agentd.v1.ExecStart
+	(*ExecStdin)(nil),      // 12: agentcomp.agentd.v1.ExecStdin
+	(*ExecSignal)(nil),     // 13: agentcomp.agentd.v1.ExecSignal
+	(*ExecOutput)(nil),     // 14: agentcomp.agentd.v1.ExecOutput
+	(*ExecExit)(nil),       // 15: agentcomp.agentd.v1.ExecExit
+	(*ReadFile)(nil),       // 16: agentcomp.agentd.v1.ReadFile
+	(*WriteFile)(nil),      // 17: agentcomp.agentd.v1.WriteFile
+	(*FileData)(nil),       // 18: agentcomp.agentd.v1.FileData
+	(*FileInfo)(nil),       // 19: agentcomp.agentd.v1.FileInfo
+	(*Stat)(nil),           // 20: agentcomp.agentd.v1.Stat
+	(*ListDir)(nil),        // 21: agentcomp.agentd.v1.ListDir
+	(*DirListing)(nil),     // 22: agentcomp.agentd.v1.DirListing
+	(*NetworkConfig)(nil),  // 23: agentcomp.agentd.v1.NetworkConfig
+	(*Configure)(nil),      // 24: agentcomp.agentd.v1.Configure
+	(*Ack)(nil),            // 25: agentcomp.agentd.v1.Ack
+	(*Region)(nil),         // 26: agentcomp.agentd.v1.Region
+	(*Screenshot)(nil),     // 27: agentcomp.agentd.v1.Screenshot
+	(*ScreenshotInfo)(nil), // 28: agentcomp.agentd.v1.ScreenshotInfo
+	(*Input)(nil),          // 29: agentcomp.agentd.v1.Input
+	(*InputEvent)(nil),     // 30: agentcomp.agentd.v1.InputEvent
+	(*PointerMove)(nil),    // 31: agentcomp.agentd.v1.PointerMove
+	(*PointerButton)(nil),  // 32: agentcomp.agentd.v1.PointerButton
+	(*Scroll)(nil),         // 33: agentcomp.agentd.v1.Scroll
+	(*Key)(nil),            // 34: agentcomp.agentd.v1.Key
+	(*Text)(nil),           // 35: agentcomp.agentd.v1.Text
+	(*Delay)(nil),          // 36: agentcomp.agentd.v1.Delay
+	(*InputResult)(nil),    // 37: agentcomp.agentd.v1.InputResult
+	nil,                    // 38: agentcomp.agentd.v1.ExecStart.EnvEntry
+	nil,                    // 39: agentcomp.agentd.v1.Configure.EnvEntry
 }
 var file_agentcomp_agentd_v1_agentd_proto_depIdxs = []int32{
-	4,  // 0: agentcomp.agentd.v1.Frame.error:type_name -> agentcomp.agentd.v1.Error
-	5,  // 1: agentcomp.agentd.v1.Frame.ping:type_name -> agentcomp.agentd.v1.Ping
-	6,  // 2: agentcomp.agentd.v1.Frame.pong:type_name -> agentcomp.agentd.v1.Pong
-	8,  // 3: agentcomp.agentd.v1.Frame.exec_start:type_name -> agentcomp.agentd.v1.ExecStart
-	9,  // 4: agentcomp.agentd.v1.Frame.exec_stdin:type_name -> agentcomp.agentd.v1.ExecStdin
-	10, // 5: agentcomp.agentd.v1.Frame.exec_signal:type_name -> agentcomp.agentd.v1.ExecSignal
-	11, // 6: agentcomp.agentd.v1.Frame.exec_output:type_name -> agentcomp.agentd.v1.ExecOutput
-	12, // 7: agentcomp.agentd.v1.Frame.exec_exit:type_name -> agentcomp.agentd.v1.ExecExit
-	13, // 8: agentcomp.agentd.v1.Frame.read_file:type_name -> agentcomp.agentd.v1.ReadFile
-	14, // 9: agentcomp.agentd.v1.Frame.write_file:type_name -> agentcomp.agentd.v1.WriteFile
-	15, // 10: agentcomp.agentd.v1.Frame.file_data:type_name -> agentcomp.agentd.v1.FileData
-	16, // 11: agentcomp.agentd.v1.Frame.file_info:type_name -> agentcomp.agentd.v1.FileInfo
-	17, // 12: agentcomp.agentd.v1.Frame.stat:type_name -> agentcomp.agentd.v1.Stat
-	18, // 13: agentcomp.agentd.v1.Frame.list_dir:type_name -> agentcomp.agentd.v1.ListDir
-	19, // 14: agentcomp.agentd.v1.Frame.dir_listing:type_name -> agentcomp.agentd.v1.DirListing
-	21, // 15: agentcomp.agentd.v1.Frame.configure:type_name -> agentcomp.agentd.v1.Configure
-	22, // 16: agentcomp.agentd.v1.Frame.ack:type_name -> agentcomp.agentd.v1.Ack
-	0,  // 17: agentcomp.agentd.v1.Error.code:type_name -> agentcomp.agentd.v1.ErrorCode
-	7,  // 18: agentcomp.agentd.v1.Pong.display:type_name -> agentcomp.agentd.v1.Display
-	23, // 19: agentcomp.agentd.v1.ExecStart.env:type_name -> agentcomp.agentd.v1.ExecStart.EnvEntry
-	1,  // 20: agentcomp.agentd.v1.ExecOutput.stream:type_name -> agentcomp.agentd.v1.Stream
-	2,  // 21: agentcomp.agentd.v1.FileInfo.type:type_name -> agentcomp.agentd.v1.FileType
-	16, // 22: agentcomp.agentd.v1.DirListing.entries:type_name -> agentcomp.agentd.v1.FileInfo
-	20, // 23: agentcomp.agentd.v1.Configure.network:type_name -> agentcomp.agentd.v1.NetworkConfig
-	24, // 24: agentcomp.agentd.v1.Configure.env:type_name -> agentcomp.agentd.v1.Configure.EnvEntry
-	25, // [25:25] is the sub-list for method output_type
-	25, // [25:25] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	7,  // 0: agentcomp.agentd.v1.Frame.error:type_name -> agentcomp.agentd.v1.Error
+	8,  // 1: agentcomp.agentd.v1.Frame.ping:type_name -> agentcomp.agentd.v1.Ping
+	9,  // 2: agentcomp.agentd.v1.Frame.pong:type_name -> agentcomp.agentd.v1.Pong
+	11, // 3: agentcomp.agentd.v1.Frame.exec_start:type_name -> agentcomp.agentd.v1.ExecStart
+	12, // 4: agentcomp.agentd.v1.Frame.exec_stdin:type_name -> agentcomp.agentd.v1.ExecStdin
+	13, // 5: agentcomp.agentd.v1.Frame.exec_signal:type_name -> agentcomp.agentd.v1.ExecSignal
+	14, // 6: agentcomp.agentd.v1.Frame.exec_output:type_name -> agentcomp.agentd.v1.ExecOutput
+	15, // 7: agentcomp.agentd.v1.Frame.exec_exit:type_name -> agentcomp.agentd.v1.ExecExit
+	16, // 8: agentcomp.agentd.v1.Frame.read_file:type_name -> agentcomp.agentd.v1.ReadFile
+	17, // 9: agentcomp.agentd.v1.Frame.write_file:type_name -> agentcomp.agentd.v1.WriteFile
+	18, // 10: agentcomp.agentd.v1.Frame.file_data:type_name -> agentcomp.agentd.v1.FileData
+	19, // 11: agentcomp.agentd.v1.Frame.file_info:type_name -> agentcomp.agentd.v1.FileInfo
+	20, // 12: agentcomp.agentd.v1.Frame.stat:type_name -> agentcomp.agentd.v1.Stat
+	21, // 13: agentcomp.agentd.v1.Frame.list_dir:type_name -> agentcomp.agentd.v1.ListDir
+	22, // 14: agentcomp.agentd.v1.Frame.dir_listing:type_name -> agentcomp.agentd.v1.DirListing
+	24, // 15: agentcomp.agentd.v1.Frame.configure:type_name -> agentcomp.agentd.v1.Configure
+	25, // 16: agentcomp.agentd.v1.Frame.ack:type_name -> agentcomp.agentd.v1.Ack
+	27, // 17: agentcomp.agentd.v1.Frame.screenshot:type_name -> agentcomp.agentd.v1.Screenshot
+	28, // 18: agentcomp.agentd.v1.Frame.screenshot_info:type_name -> agentcomp.agentd.v1.ScreenshotInfo
+	29, // 19: agentcomp.agentd.v1.Frame.input:type_name -> agentcomp.agentd.v1.Input
+	37, // 20: agentcomp.agentd.v1.Frame.input_result:type_name -> agentcomp.agentd.v1.InputResult
+	0,  // 21: agentcomp.agentd.v1.Error.code:type_name -> agentcomp.agentd.v1.ErrorCode
+	10, // 22: agentcomp.agentd.v1.Pong.display:type_name -> agentcomp.agentd.v1.Display
+	38, // 23: agentcomp.agentd.v1.ExecStart.env:type_name -> agentcomp.agentd.v1.ExecStart.EnvEntry
+	1,  // 24: agentcomp.agentd.v1.ExecOutput.stream:type_name -> agentcomp.agentd.v1.Stream
+	2,  // 25: agentcomp.agentd.v1.FileInfo.type:type_name -> agentcomp.agentd.v1.FileType
+	19, // 26: agentcomp.agentd.v1.DirListing.entries:type_name -> agentcomp.agentd.v1.FileInfo
+	23, // 27: agentcomp.agentd.v1.Configure.network:type_name -> agentcomp.agentd.v1.NetworkConfig
+	39, // 28: agentcomp.agentd.v1.Configure.env:type_name -> agentcomp.agentd.v1.Configure.EnvEntry
+	3,  // 29: agentcomp.agentd.v1.Screenshot.format:type_name -> agentcomp.agentd.v1.ImageFormat
+	26, // 30: agentcomp.agentd.v1.Screenshot.region:type_name -> agentcomp.agentd.v1.Region
+	3,  // 31: agentcomp.agentd.v1.ScreenshotInfo.format:type_name -> agentcomp.agentd.v1.ImageFormat
+	30, // 32: agentcomp.agentd.v1.Input.events:type_name -> agentcomp.agentd.v1.InputEvent
+	31, // 33: agentcomp.agentd.v1.InputEvent.move:type_name -> agentcomp.agentd.v1.PointerMove
+	32, // 34: agentcomp.agentd.v1.InputEvent.button:type_name -> agentcomp.agentd.v1.PointerButton
+	33, // 35: agentcomp.agentd.v1.InputEvent.scroll:type_name -> agentcomp.agentd.v1.Scroll
+	34, // 36: agentcomp.agentd.v1.InputEvent.key:type_name -> agentcomp.agentd.v1.Key
+	35, // 37: agentcomp.agentd.v1.InputEvent.text:type_name -> agentcomp.agentd.v1.Text
+	36, // 38: agentcomp.agentd.v1.InputEvent.delay:type_name -> agentcomp.agentd.v1.Delay
+	5,  // 39: agentcomp.agentd.v1.PointerButton.button:type_name -> agentcomp.agentd.v1.Button
+	4,  // 40: agentcomp.agentd.v1.PointerButton.action:type_name -> agentcomp.agentd.v1.Action
+	4,  // 41: agentcomp.agentd.v1.Key.action:type_name -> agentcomp.agentd.v1.Action
+	42, // [42:42] is the sub-list for method output_type
+	42, // [42:42] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_agentcomp_agentd_v1_agentd_proto_init() }
@@ -1850,14 +2951,26 @@ func file_agentcomp_agentd_v1_agentd_proto_init() {
 		(*Frame_DirListing)(nil),
 		(*Frame_Configure)(nil),
 		(*Frame_Ack)(nil),
+		(*Frame_Screenshot)(nil),
+		(*Frame_ScreenshotInfo)(nil),
+		(*Frame_Input)(nil),
+		(*Frame_InputResult)(nil),
+	}
+	file_agentcomp_agentd_v1_agentd_proto_msgTypes[24].OneofWrappers = []any{
+		(*InputEvent_Move)(nil),
+		(*InputEvent_Button)(nil),
+		(*InputEvent_Scroll)(nil),
+		(*InputEvent_Key)(nil),
+		(*InputEvent_Text)(nil),
+		(*InputEvent_Delay)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agentcomp_agentd_v1_agentd_proto_rawDesc), len(file_agentcomp_agentd_v1_agentd_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   22,
+			NumEnums:      6,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

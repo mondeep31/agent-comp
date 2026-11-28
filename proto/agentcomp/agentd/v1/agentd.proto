@@ -21,6 +21,11 @@ option go_package = "github.com/mondeep31/agent-comp/gen/go/agentcomp/agentd/v1;
 //   Stat:      host Stat                    -> guest FileInfo
 //   ListDir:   host ListDir                 -> guest DirListing
 //   Configure: host Configure               -> guest Ack
+//   Screenshot: host Screenshot             -> guest ScreenshotInfo, FileData* (last has eof)
+//   Input:     host Input                   -> guest InputResult
+//
+// Screenshot and Input need a display; a headless guest, or one whose
+// display is not ready, answers ERROR_CODE_UNAVAILABLE.
 message Frame {
   oneof kind {
     Error error = 1;
@@ -40,6 +45,10 @@ message Frame {
     DirListing dir_listing = 15;
     Configure configure = 16;
     Ack ack = 17;
+    Screenshot screenshot = 18;
+    ScreenshotInfo screenshot_info = 19;
+    Input input = 20;
+    InputResult input_result = 21;
   }
 }
 
@@ -189,3 +198,113 @@ message Configure {
 }
 
 message Ack {}
+
+enum ImageFormat {
+  IMAGE_FORMAT_UNSPECIFIED = 0;
+  IMAGE_FORMAT_PNG = 1;
+  IMAGE_FORMAT_JPEG = 2;
+}
+
+// A rectangle in screen pixels.
+message Region {
+  uint32 x = 1;
+  uint32 y = 2;
+  uint32 width = 3;
+  uint32 height = 4;
+}
+
+message Screenshot {
+  // Unspecified means PNG.
+  ImageFormat format = 1;
+  // JPEG quality 1-100; 0 means 80.
+  uint32 quality = 2;
+  // Captures part of the screen; unset means all of it.
+  Region region = 3;
+}
+
+// Precedes the encoded image, which follows as FileData chunks.
+message ScreenshotInfo {
+  uint32 width = 1;
+  uint32 height = 2;
+  ImageFormat format = 3;
+  uint64 size = 4;
+}
+
+// A batch of input events, applied in order. Keys and buttons still held at
+// the end of a batch, or when an event fails, are released, unless they were
+// pressed with ACTION_PRESS and the batch ended normally.
+message Input {
+  repeated InputEvent events = 1;
+}
+
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  // Press and release (click or tap).
+  ACTION_TAP = 1;
+  ACTION_PRESS = 2;
+  ACTION_RELEASE = 3;
+}
+
+enum Button {
+  BUTTON_UNSPECIFIED = 0;
+  BUTTON_LEFT = 1;
+  BUTTON_MIDDLE = 2;
+  BUTTON_RIGHT = 3;
+}
+
+message InputEvent {
+  oneof kind {
+    PointerMove move = 1;
+    PointerButton button = 2;
+    Scroll scroll = 3;
+    Key key = 4;
+    Text text = 5;
+    Delay delay = 6;
+  }
+}
+
+message PointerMove {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+message PointerButton {
+  Button button = 1;
+  // Unspecified means TAP.
+  Action action = 2;
+  // Taps in a row, e.g. 2 for a double click; 0 means 1.
+  uint32 count = 3;
+}
+
+// Wheel clicks; positive dy scrolls down, positive dx scrolls right.
+message Scroll {
+  int32 dx = 1;
+  int32 dy = 2;
+}
+
+// A key or chord such as "Return", "ctrl+l" or "ctrl+shift+Tab", by X keysym
+// name. Modifiers are pressed in order and released in reverse.
+message Key {
+  string keys = 1;
+  // Unspecified means TAP.
+  Action action = 2;
+  // Taps in a row; 0 means 1.
+  uint32 count = 3;
+}
+
+// Types Unicode text, one character at a time.
+message Text {
+  string text = 1;
+  // Pause between characters; 0 means none.
+  uint32 delay_ms = 2;
+}
+
+message Delay {
+  uint32 ms = 1;
+}
+
+message InputResult {
+  // Pointer position after the batch.
+  int32 cursor_x = 1;
+  int32 cursor_y = 2;
+}
