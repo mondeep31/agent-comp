@@ -26,6 +26,7 @@ import (
 
 const (
 	readyTimeout     = 15 * time.Second
+	clockSyncTimeout = 2 * time.Second
 	stoppedRetention = 10 * time.Minute
 	maxEnv           = 128
 	maxMetadata      = 16
@@ -466,8 +467,26 @@ func (m *Manager) resumeLocked(ctx context.Context, sb *sandbox, reason string) 
 	}
 	sb.info.State = StateRunning
 	sb.info.LastActiveAt = m.opts.Now()
+	m.syncClock(ctx, sb)
 	m.emit(Event{Sandbox: sb.info.ID, Owner: sb.info.Owner, From: StatePaused, To: StateRunning, Reason: reason})
 	return nil
+}
+
+// syncClock resets the guest's wall clock after its vCPUs were paused, which
+// otherwise leaves it behind by the pause. It also mixes in fresh entropy.
+// It is best effort: a slow guest must not fail the operation that resumed it.
+func (m *Manager) syncClock(ctx context.Context, sb *sandbox) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), clockSyncTimeout)
+	defer cancel()
+	entropy := make([]byte, 32)
+	_, _ = rand.Read(entropy)
+	err := sb.inst.Guest.Configure(ctx, &agentdv1.Configure{
+		WallClockUnixMs: m.opts.Now().UnixMilli(),
+		Entropy:         entropy,
+	})
+	if err != nil {
+		m.log.Warn("clock sync after resume failed", "id", sb.info.ID, "err", err)
+	}
 }
 
 func (m *Manager) pauseLocked(ctx context.Context, sb *sandbox, reason string) error {
@@ -584,6 +603,8 @@ func (m *Manager) Snapshot(ctx context.Context, owner, id string) (SnapshotInfo,
 		if rerr := vm.Resume(ctx); rerr != nil {
 			m.stopLocked(context.WithoutCancel(ctx), sb, "resume after snapshot failed: "+rerr.Error())
 			err = errors.Join(err, rerr)
+		} else {
+			m.syncClock(ctx, sb)
 		}
 	}
 	if err != nil {

@@ -298,6 +298,34 @@ func TestIdlePauseAndAutoResume(t *testing.T) {
 	}
 }
 
+func TestResumeResyncsClock(t *testing.T) {
+	f := newFixture(t, nil)
+	info, err := f.m.Create(t.Context(), sandbox.CreateRequest{Owner: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := f.src.VMs()[0].Agent
+	if got := agent.ClockMs(); got != f.clock.Now().UnixMilli() {
+		t.Fatalf("clock at create = %d", got)
+	}
+	if _, err := f.m.Pause(t.Context(), "alice", info.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.clock.Advance(time.Hour)
+	run(t, f.m, "alice", info.ID, "echo", "hi")
+	if got := agent.ClockMs(); got != f.clock.Now().UnixMilli() {
+		t.Fatalf("clock after auto-resume = %d, want %d", got, f.clock.Now().UnixMilli())
+	}
+
+	f.clock.Advance(time.Minute)
+	if _, err := f.m.Snapshot(t.Context(), "alice", info.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := agent.ClockMs(); got != f.clock.Now().UnixMilli() {
+		t.Fatalf("clock after snapshot = %d", got)
+	}
+}
+
 func TestTTLStopsAndForgets(t *testing.T) {
 	f := newFixture(t, nil)
 	info, err := f.m.Create(t.Context(), sandbox.CreateRequest{Owner: "alice", TTL: time.Minute, IdleTimeout: time.Hour})
