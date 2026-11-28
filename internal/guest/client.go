@@ -6,6 +6,7 @@ package guest
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -315,4 +316,58 @@ func sendChunks(cn *conn, r io.Reader) error {
 			return nil
 		}
 	}
+}
+
+// MaxScreenshotBytes bounds what Screenshot accepts from the guest.
+const MaxScreenshotBytes = 16 << 20
+
+// Screenshot captures the guest's screen and returns the encoded image.
+func (c *Client) Screenshot(ctx context.Context, req *agentdv1.Screenshot) (*agentdv1.ScreenshotInfo, []byte, error) {
+	cn, err := c.open(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer cn.Close()
+	if err := cn.send(&agentdv1.Frame{Kind: &agentdv1.Frame_Screenshot{Screenshot: req}}); err != nil {
+		return nil, nil, fmt.Errorf("guest: write: %w", err)
+	}
+	f, err := cn.recv(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	info := f.GetScreenshotInfo()
+	if info == nil {
+		return nil, nil, unexpected(f, "ScreenshotInfo")
+	}
+	// The guest is untrusted: never preallocate what it claims.
+	var buf bytes.Buffer
+	for {
+		f, err := cn.recv(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		d := f.GetFileData()
+		if d == nil {
+			return nil, nil, unexpected(f, "FileData")
+		}
+		if buf.Len()+len(d.GetData()) > MaxScreenshotBytes {
+			return nil, nil, fmt.Errorf("guest: screenshot exceeds %d bytes", MaxScreenshotBytes)
+		}
+		buf.Write(d.GetData())
+		if d.GetEof() {
+			return info, buf.Bytes(), nil
+		}
+	}
+}
+
+// Input applies a batch of input events in the guest.
+func (c *Client) Input(ctx context.Context, req *agentdv1.Input) (*agentdv1.InputResult, error) {
+	f, err := c.call(ctx, &agentdv1.Frame{Kind: &agentdv1.Frame_Input{Input: req}})
+	if err != nil {
+		return nil, err
+	}
+	if r := f.GetInputResult(); r != nil {
+		return r, nil
+	}
+	return nil, unexpected(f, "InputResult")
 }

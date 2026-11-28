@@ -196,3 +196,46 @@ func TestStartCancelClosesConnection(t *testing.T) {
 		t.Fatalf("Wait error = %v, want context.Canceled", err)
 	}
 }
+
+func TestScreenshotCollectsChunksAndCapsSize(t *testing.T) {
+	chunks := func(n int, size int) func(r *bufio.Reader, w net.Conn) {
+		return func(r *bufio.Reader, w net.Conn) {
+			if mustRead(t, r).GetScreenshot() == nil {
+				t.Error("want Screenshot")
+			}
+			send(w, &agentdv1.Frame{Kind: &agentdv1.Frame_ScreenshotInfo{ScreenshotInfo: &agentdv1.ScreenshotInfo{Width: 4, Height: 2}}})
+			for range n {
+				send(w, &agentdv1.Frame{Kind: &agentdv1.Frame_FileData{FileData: &agentdv1.FileData{Data: bytes.Repeat([]byte("x"), size)}}})
+			}
+			send(w, &agentdv1.Frame{Kind: &agentdv1.Frame_FileData{FileData: &agentdv1.FileData{Eof: true}}})
+		}
+	}
+	info, data, err := fakeAgent(t, chunks(3, 100)).Screenshot(t.Context(), &agentdv1.Screenshot{})
+	if err != nil || info.GetWidth() != 4 || len(data) != 300 {
+		t.Fatalf("info=%v len=%d err=%v", info, len(data), err)
+	}
+	// 17 chunks of 1 MiB exceed MaxScreenshotBytes.
+	if _, _, err := fakeAgent(t, chunks(17, 1<<20)).Screenshot(t.Context(), &agentdv1.Screenshot{}); err == nil {
+		t.Fatal("want size error")
+	}
+}
+
+func TestInputAndUnavailable(t *testing.T) {
+	c := fakeAgent(t, func(r *bufio.Reader, w net.Conn) {
+		in := mustRead(t, r).GetInput()
+		if len(in.GetEvents()) != 1 {
+			send(w, &agentdv1.Frame{Kind: &agentdv1.Frame_Error{Error: &agentdv1.Error{Code: agentdv1.ErrorCode_ERROR_CODE_UNAVAILABLE, Message: "no display"}}})
+			return
+		}
+		send(w, &agentdv1.Frame{Kind: &agentdv1.Frame_InputResult{InputResult: &agentdv1.InputResult{CursorX: 7, CursorY: 9}}})
+	})
+	ev := &agentdv1.InputEvent{Kind: &agentdv1.InputEvent_Move{Move: &agentdv1.PointerMove{X: 7, Y: 9}}}
+	res, err := c.Input(t.Context(), &agentdv1.Input{Events: []*agentdv1.InputEvent{ev}})
+	if err != nil || res.GetCursorX() != 7 {
+		t.Fatalf("res=%v err=%v", res, err)
+	}
+	_, err = c.Input(t.Context(), &agentdv1.Input{})
+	if !HasCode(err, agentdv1.ErrorCode_ERROR_CODE_UNAVAILABLE) {
+		t.Fatalf("err = %v", err)
+	}
+}
