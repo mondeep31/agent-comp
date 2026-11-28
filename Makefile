@@ -14,7 +14,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GO_LDFLAGS := -s -w -X github.com/mondeep31/agent-comp/internal/version.Version=$(VERSION)
 
 .PHONY: all lint lint-go lint-rust lint-proto fmt test test-go test-rust test-rust-x11 build build-go build-agentd \
-	proto integration bench audit image sync clean help
+	proto integration bench audit image image-desktop sync clean help
 
 all: lint test build ## Lint, test and build everything
 
@@ -79,7 +79,11 @@ audit: ## Vulnerability and license checks
 IMAGE_DIR ?= /var/lib/agent-comp/images
 
 image: build-agentd ## Build the base guest image and install the kernel into IMAGE_DIR (sudo)
-	sudo AGENTD=$(CURDIR)/$(BIN)/agentd ./images/build-base.sh $(IMAGE_DIR)
+	sudo AGENTD=$(CURDIR)/$(BIN)/agentd ./images/build-image.sh base $(IMAGE_DIR)
+	sudo ./images/install-kernel.sh /var/lib/agent-comp/ci $(IMAGE_DIR)
+
+image-desktop: build-agentd ## Build the desktop guest image (Xvfb, openbox, Chromium) into IMAGE_DIR (sudo)
+	sudo AGENTD=$(CURDIR)/$(BIN)/agentd ./images/build-image.sh desktop $(IMAGE_DIR)
 	sudo ./images/install-kernel.sh /var/lib/agent-comp/ci $(IMAGE_DIR)
 
 sync: ## Copy the working tree to the dev host
