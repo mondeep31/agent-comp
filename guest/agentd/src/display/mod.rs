@@ -6,8 +6,11 @@
 //! [`STATE_FILE`], which the server reports in `Pong.display` so the host
 //! knows when the screen is usable.
 
+pub mod keys;
+pub mod ops;
 #[cfg(target_os = "linux")]
 pub mod session;
+pub mod x11;
 
 use std::fmt;
 use std::path::Path;

@@ -165,6 +165,34 @@ where
     }
 }
 
+/// Writes `header`, then `data` as `FileData` chunks ending with an empty
+/// `eof` chunk. A closed connection just ends the reply.
+pub async fn send_chunks<S>(stream: &mut S, header: Kind, data: &[u8])
+where
+    S: AsyncWrite + Unpin,
+{
+    if write_frame(stream, header).await.is_err() {
+        return;
+    }
+    for chunk in data.chunks(CHUNK) {
+        let frame = Kind::FileData(FileData {
+            data: Bytes::copy_from_slice(chunk),
+            eof: false,
+        });
+        if write_frame(stream, frame).await.is_err() {
+            return;
+        }
+    }
+    let _ = write_frame(
+        stream,
+        Kind::FileData(FileData {
+            data: Bytes::new(),
+            eof: true,
+        }),
+    )
+    .await;
+}
+
 /// Receives `FileData` frames until `eof`, then replies with the new `FileInfo`.
 pub async fn write<S>(mut stream: S, req: WriteFile, state: &State) -> Result<(), (S, AgentError)>
 where

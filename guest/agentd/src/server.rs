@@ -1,7 +1,7 @@
 //! Connection dispatch: one operation per connection.
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -34,6 +34,8 @@ pub struct State {
     pub display: Option<DisplayConfig>,
     /// Where the display session publishes its status.
     pub display_state: std::path::PathBuf,
+    /// The X connection for screenshots and input, opened on first use.
+    pub(crate) x11: Mutex<Option<display::x11::Conn>>,
 }
 
 impl Default for State {
@@ -55,6 +57,7 @@ impl State {
             max_file_bytes,
             display: None,
             display_state: display::STATE_FILE.into(),
+            x11: Mutex::new(None),
         }
     }
 
@@ -137,6 +140,16 @@ where
         Kind::Configure(req) => configure::apply(req, &state)
             .await
             .map(|()| Kind::Ack(Ack {})),
+        Kind::Screenshot(req) => match display::ops::screenshot(req, Arc::clone(&state)).await {
+            Ok((info, data)) => {
+                files::send_chunks(&mut stream, Kind::ScreenshotInfo(info), &data).await;
+                return Ok(());
+            }
+            Err(e) => Err(e),
+        },
+        Kind::Input(req) => display::ops::input(req, Arc::clone(&state))
+            .await
+            .map(Kind::InputResult),
         other => Err(AgentError::invalid(format!(
             "unexpected opening frame: {}",
             kind_name(&other)
@@ -170,6 +183,10 @@ fn kind_name(kind: &Kind) -> &'static str {
         Kind::DirListing(_) => "DirListing",
         Kind::Configure(_) => "Configure",
         Kind::Ack(_) => "Ack",
+        Kind::Screenshot(_) => "Screenshot",
+        Kind::ScreenshotInfo(_) => "ScreenshotInfo",
+        Kind::Input(_) => "Input",
+        Kind::InputResult(_) => "InputResult",
     }
 }
 

@@ -9,6 +9,9 @@ yanked = "deny"
 version = 2
 allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]
 confidence-threshold = 0.9
+# jpeg-encoder ports libjpeg code under the permissive IJG license, which asks
+# only for attribution in documentation. Allowed for that crate alone.
+exceptions = [{ allow = ["IJG"], crate = "jpeg-encoder" }]
 
 [bans]
 multiple-versions = "warn"
