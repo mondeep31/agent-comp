@@ -67,6 +67,7 @@ mod tests {
         let sent = Kind::Pong(Pong {
             agent_version: "1.2.3".into(),
             uptime_ms: 42,
+            display: None,
         });
         write_frame(&mut a, sent.clone()).await.unwrap();
         let got = read_frame(&mut b).await.unwrap();

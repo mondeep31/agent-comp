@@ -6,6 +6,7 @@
 
 pub mod codec;
 pub mod configure;
+pub mod display;
 pub mod error;
 pub mod exec;
 pub mod files;

@@ -7,10 +7,11 @@ use std::time::Instant;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::codec::{read_frame, write_frame};
+use crate::display::DisplayConfig;
 use crate::error::AgentError;
 use crate::proto::frame::Kind;
-use crate::proto::{Ack, Pong};
-use crate::{configure, exec, files};
+use crate::proto::{Ack, Display, Pong};
+use crate::{configure, display, exec, files};
 
 /// Default environment for commands, before host-provided overrides.
 const BASE_ENV: &[(&str, &str)] = &[
@@ -29,6 +30,10 @@ pub struct State {
     env: RwLock<HashMap<String, String>>,
     /// Largest file `ReadFile`/`WriteFile` transfer.
     pub max_file_bytes: u64,
+    /// The screen, for guests booted with `ac.display=WxH`.
+    pub display: Option<DisplayConfig>,
+    /// Where the display session publishes its status.
+    pub display_state: std::path::PathBuf,
 }
 
 impl Default for State {
@@ -48,7 +53,34 @@ impl State {
             started: Instant::now(),
             env: RwLock::new(env),
             max_file_bytes,
+            display: None,
+            display_state: display::STATE_FILE.into(),
         }
+    }
+
+    /// Gives commands `DISPLAY` and makes `Pong` report the screen.
+    #[must_use]
+    pub fn with_display(mut self, display: Option<DisplayConfig>) -> Self {
+        if display.is_some()
+            && let Ok(env) = self.env.get_mut()
+        {
+            env.insert("DISPLAY".into(), display::DISPLAY.into());
+        }
+        self.display = display;
+        self
+    }
+
+    /// The screen's current status, if this guest has one.
+    #[must_use]
+    pub fn display_status(&self) -> Option<Display> {
+        let cfg = self.display?;
+        let st = display::Status::read(&self.display_state);
+        Some(Display {
+            width: cfg.width,
+            height: cfg.height,
+            ready: st.ready,
+            error: st.error,
+        })
     }
 
     /// The environment every exec starts from.
@@ -92,6 +124,7 @@ where
         Kind::Ping(_) => Ok(Kind::Pong(Pong {
             agent_version: crate::VERSION.to_owned(),
             uptime_ms: state.uptime_ms(),
+            display: state.display_status(),
         })),
         Kind::ExecStart(start) => {
             exec::run(stream, start, &state).await;
@@ -197,6 +230,33 @@ mod tests {
             panic!("unexpected frames: {frames:?}");
         };
         assert_eq!(pong.agent_version, crate::VERSION);
+    }
+
+    #[tokio::test]
+    async fn pong_reports_display_status() {
+        let headless = roundtrip(Arc::new(State::default()), Kind::Ping(Ping {})).await;
+        let [Kind::Pong(pong)] = headless.as_slice() else {
+            panic!("unexpected frames: {headless:?}");
+        };
+        assert!(pong.display.is_none());
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("display");
+        let mut state = State::default().with_display(DisplayConfig::parse("1280x800"));
+        state.display_state.clone_from(&file);
+        let state = Arc::new(state);
+        assert_eq!(state.env().get("DISPLAY").map(String::as_str), Some(":0"));
+
+        let pong_display = |frames: Vec<Kind>| match frames.as_slice() {
+            [Kind::Pong(p)] => p.display.clone().unwrap(),
+            other => panic!("unexpected frames: {other:?}"),
+        };
+        let d = pong_display(roundtrip(Arc::clone(&state), Kind::Ping(Ping {})).await);
+        assert_eq!((d.width, d.height, d.ready), (1280, 800, false));
+
+        std::fs::write(&file, "ready\n").unwrap();
+        let d = pong_display(roundtrip(Arc::clone(&state), Kind::Ping(Ping {})).await);
+        assert!(d.ready && d.error.is_empty());
     }
 
     #[tokio::test]

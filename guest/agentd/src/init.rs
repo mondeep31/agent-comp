@@ -190,26 +190,43 @@ pub fn parse_cmdline_network(cmdline: &str) -> crate::proto::NetworkConfig {
     net
 }
 
-/// Runs the server as a child and reaps every process that ends up with PID 1.
+/// Runs the server (and, with a display, the display session) as children,
+/// restarts whichever exits, and reaps every process that ends up with PID 1.
 fn supervise() -> Result<()> {
+    let display = fs::read_to_string("/proc/cmdline")
+        .ok()
+        .and_then(|c| crate::display::DisplayConfig::from_cmdline(&c));
+    let mut services: Vec<Vec<String>> = vec![vec!["serve".into()]];
+    if let Some(d) = display {
+        services.push(vec!["display".into(), d.to_string()]);
+    }
+    let mut running: Vec<Option<nix::unistd::Pid>> = vec![None; services.len()];
     loop {
-        let server = Command::new("/proc/self/exe")
-            .arg("serve")
-            .spawn()
-            .context("starting server")?;
-        let server_pid = nix::unistd::Pid::from_raw(server.id() as i32);
-        loop {
-            match waitpid(None, None) {
-                Ok(status) if status.pid() == Some(server_pid) => {
-                    eprintln!("agentd: server exited ({status:?}); restarting");
-                    break;
+        for (i, args) in services.iter().enumerate() {
+            if running[i].is_none() {
+                match Command::new("/proc/self/exe").args(args).spawn() {
+                    Ok(child) => {
+                        running[i] = Some(nix::unistd::Pid::from_raw(child.id() as i32));
+                    }
+                    Err(e) => eprintln!("agentd: starting {}: {e}", args[0]),
                 }
-                Ok(_) | Err(Errno::EINTR) => {}
-                Err(Errno::ECHILD) => break,
-                Err(e) => eprintln!("agentd: waitpid: {e}"),
             }
         }
-        std::thread::sleep(Duration::from_millis(100));
+        match waitpid(None, None) {
+            Ok(status) => {
+                if let Some(i) = running
+                    .iter()
+                    .position(|p| p.is_some() && *p == status.pid())
+                {
+                    eprintln!("agentd: {} exited ({status:?}); restarting", services[i][0]);
+                    running[i] = None;
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            }
+            Err(Errno::EINTR) => {}
+            Err(Errno::ECHILD) => std::thread::sleep(Duration::from_millis(100)),
+            Err(e) => eprintln!("agentd: waitpid: {e}"),
+        }
     }
 }
 
